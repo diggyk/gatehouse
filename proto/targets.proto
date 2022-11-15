@@ -1,0 +1,54 @@
+syntax = "proto3";
+package targets;
+
+/** Describes a target */
+message Target {
+    // the identity of the target (case insensitive)
+    // ex: "maindb"
+    string id = 1;
+
+    // the type of target (case insensitive)
+    // ex: "database"
+    string typestr = 2; 
+
+    // the supported actions for this target 
+    repeated string actions = 3;
+}
+
+/** Request message for adding a new target */
+message AddTargetRequest {
+    // the identity of the target (case insensitive)
+    // ex: "maindb"
+    string id = 1;
+
+    // the type of target (case insensitive)
+    // ex: "database"
+    string typestr = 2; 
+
+    // (Optional) list of actions to register for this target
+    repeated string actions = 3;
+}
+/** Target created */
+message AddTargetResponse {
+    // The target added
+    Target target = 1;
+}
+
+/** Request to add actions to an existing target */
+message AddTargetActionRequest {
+    // the identity of the target (case insensitive)
+    // ex: "maindb"
+    string id = 1;
+
+    // the type of target (case insensitive)
+    // ex: "database"
+    string typestr = 2; 
+
+    // List of actions to register for this target
+    repeated string actions = 3;
+}
+/** Updated target */
+message AddTargetActionResponse {
+    // The target updated
+    Target target = 1;
+}

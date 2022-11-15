@@ -1,0 +1,26 @@
+syntax = "proto3";
+package gatehouse;
+import "targets.proto";
+
+
+/** Describes an entity and its attributes that will be tested against policies for a target */
+message Entity {
+    // the identity of the entity (case insensitive)
+    // ex: "johndoe@email.com"
+    string id = 1;
+
+    // type string (case insensitive)
+    // ex: "email"
+    string type = 2;
+
+    map<string, string> attributes = 3;
+}
+
+
+service Gatehouse {
+    // add a new target 
+    rpc AddTarget (targets.AddTargetRequest) returns (targets.AddTargetResponse);
+
+    // add an action to an existing target
+    rpc AddTargetAction (targets.AddTargetActionRequest) returns (targets.AddTargetActionResponse);
+}
