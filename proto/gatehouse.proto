@@ -13,10 +13,11 @@ message Entity {
     // ex: "email"
     string type = 2;
 
+    // entity attributes
     map<string, string> attributes = 3;
 }
 
-
+/** The main Gatehouse server */
 service Gatehouse {
     // add a new target 
     rpc AddTarget (targets.AddTargetRequest) returns (targets.AddTargetResponse);
