@@ -25,7 +25,7 @@ impl From<Target> for RegisteredTarget {
         }
 
         Self {
-            name: tgt.id.to_ascii_lowercase(),
+            name: tgt.name.to_ascii_lowercase(),
             typestr: tgt.typestr.to_ascii_lowercase(),
             actions,
         }
@@ -35,7 +35,7 @@ impl From<Target> for RegisteredTarget {
 impl From<RegisteredTarget> for Target {
     fn from(target: RegisteredTarget) -> Self {
         Self {
-            id: target.name,
+            name: target.name,
             typestr: target.typestr,
             actions: target.actions.iter().map(|a| a.to_string()).collect(),
         }

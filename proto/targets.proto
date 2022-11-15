@@ -3,9 +3,9 @@ package targets;
 
 /** Describes a target */
 message Target {
-    // the identity of the target (case insensitive)
+    // the nameentity of the target (case insensitive)
     // ex: "maindb"
-    string id = 1;
+    string name = 1;
 
     // the type of target (case insensitive)
     // ex: "database"
@@ -17,9 +17,9 @@ message Target {
 
 /** Request message for adding a new target */
 message AddTargetRequest {
-    // the identity of the target (case insensitive)
+    // the nameentity of the target (case insensitive)
     // ex: "maindb"
-    string id = 1;
+    string name = 1;
 
     // the type of target (case insensitive)
     // ex: "database"
@@ -36,9 +36,9 @@ message AddTargetResponse {
 
 /** Request to add actions to an existing target */
 message AddTargetActionRequest {
-    // the identity of the target (case insensitive)
+    // the nameentity of the target (case insensitive)
     // ex: "maindb"
-    string id = 1;
+    string name = 1;
 
     // the type of target (case insensitive)
     // ex: "database"
@@ -51,4 +51,53 @@ message AddTargetActionRequest {
 message AddTargetActionResponse {
     // The target updated
     Target target = 1;
+}
+
+/** Request to remove actions from an existing target */
+message RemoveTargetActionRequest {
+    // the nameentity of the target (case insensitive)
+    // ex: "maindb"
+    string name = 1;
+
+    // the type of target (case insensitive)
+    // ex: "database"
+    string typestr = 2; 
+
+    // List of actions to remove from this target
+    repeated string actions = 3;
+}
+/** Updated target */
+message RemoveTargetActionResponse {
+    // The target updated
+    Target target = 1;
+}
+
+/** Request to add actions to an existing target */
+message RemoveTargetRequest {
+    // the nameentity of the target (case insensitive)
+    // ex: "maindb"
+    string name = 1;
+
+    // the type of target (case insensitive)
+    // ex: "database"
+    string typestr = 2; 
+}
+/** The removed target */
+message RemoveTargetResponse {
+    // The target removed
+    Target target = 1;
+}
+
+/** Request a list of all targets */
+message GetAllTargetsRequest {
+    // optional name to filter by the name
+    optional string name = 1;
+
+    // the optional type to limit responses
+    optional string typestr = 2;
+}
+/** The list of returned targets */
+message GetAllTargetsResponse {
+    // list of targets found
+    repeated Target targets = 1;
 }

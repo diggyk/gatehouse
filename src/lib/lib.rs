@@ -21,7 +21,7 @@ pub mod proto {
                     f,
                     "{}/{}: {}",
                     self.typestr,
-                    self.id,
+                    self.name,
                     self.actions
                         .iter()
                         .map(|s| s.to_string())
