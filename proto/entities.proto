@@ -1,0 +1,76 @@
+syntax = "proto3";
+package entities;
+
+import "common.proto";
+
+/** Describes an entity and its attributes that will be tested against policies for a target */
+message Entity {
+    // the identity of the entity (case insensitive)
+    // ex: "johndoe@email.com"
+    string name = 1;
+
+    // type string (case insensitive)
+    // ex: "email"
+    string typestr = 2;
+
+    // entity attributes
+    map<string, common.AttributeValues> attributes = 3;
+}
+
+/** Request to add an entity */
+message AddEntityRequest {
+    // the entity's name (case-insensitive)
+    string name = 1;
+
+    // the entity type
+    string typestr = 2;
+
+    // entity attributes
+    map<string, common.AttributeValues> attributes = 3;
+}
+
+/** Request to update an entity */
+message ModifyEntityRequest {
+    // the entity's name (case-insensitive)
+    string name = 1;
+
+    // the entity type
+    string typestr = 2;
+
+    // entity attributes to add
+    map<string, common.AttributeValues> add_attributes = 3;
+
+    // entity attributes to remove
+    map<string, common.AttributeValues> remove_attributes = 4;
+}
+
+/** Request to delete an entity */
+message RemoveEntityRequest {
+    // the entity's name (case-insensitive)
+    string name = 1;
+
+    // the entity type
+    string typestr = 2;
+
+}
+
+/** Request to get all entities, or filtered by name and/or type */
+message GetAllEntitiesRequest {
+    // the entity's name (case-insensitive)
+    optional string name = 1;
+
+    // the entity type
+    optional string typestr = 2;
+}
+
+/** Single entity response */
+message EntityResponse {
+    // the entity
+    Entity entity = 1;
+}
+
+/** Multiple entities response */
+message MultiEntityResponse {
+    // the entities
+    repeated Entity entities = 1;
+}

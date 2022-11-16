@@ -6,13 +6,21 @@ use tokio::test;
 
 use gatehouse::proto::base::gatehouse_client::GatehouseClient;
 
-use crate::common::{add_target, get_targets, modify_target, remove_target, str};
+use crate::common::{
+    add_entity, add_target, get_entities, get_targets, modify_entity, modify_target, remove_entity,
+    remove_target, str,
+};
 
 #[test]
-async fn test_targets() {
+async fn test_crud() {
     tokio::spawn(common::run_server());
     tokio::time::sleep(Duration::from_secs(2)).await;
 
+    test_targets().await;
+    test_entities().await;
+}
+
+async fn test_targets() {
     let mut client = GatehouseClient::connect("http://localhost:6174")
         .await
         .expect("could not create client");
@@ -173,4 +181,134 @@ async fn test_targets() {
     assert_eq!(tgt3.typestr, "website");
     assert_eq!(tgt3.actions.len(), 1);
     assert_eq!(tgt3.actions[0], "login");
+}
+
+async fn test_entities() {
+    let mut client = GatehouseClient::connect("http://localhost:6174")
+        .await
+        .expect("could not create client");
+
+    // ensure we have no entities at the start
+    let entities = get_entities(&mut client, None, None).await;
+
+    assert_eq!(entities.len(), 0, "entities should have been 0");
+
+    // add a entity
+    let ent1 = add_entity(&mut client, "testman1", "user", vec![]).await;
+    assert_eq!(ent1.name, "testman1");
+    assert_eq!(ent1.typestr, "user");
+    assert!(ent1.attributes.is_empty());
+
+    // add some more entities
+    let ent2 = add_entity(
+        &mut client,
+        "sandytest",
+        "user",
+        vec![(str("org"), vec!["hr"])],
+    )
+    .await;
+    let _ = add_entity(&mut client, "logger", "svc", vec![]).await;
+    let _ = add_entity(&mut client, "launcher", "svc", vec![]).await;
+    let _ = add_entity(&mut client, "printer", "svc", vec![]).await;
+    assert!(ent2.attributes.contains_key("org"));
+
+    // make sure all the entities are there
+    let entities = get_entities(&mut client, None, None).await;
+    assert_eq!(entities.len(), 5, "expected 5 entities");
+
+    // filter entities by type
+    let entities = get_entities(&mut client, None, Some("svc")).await;
+    assert_eq!(
+        entities.len(),
+        3,
+        "expected to get 3 entities of type website"
+    );
+
+    // filter target type by name
+    let entities = get_entities(&mut client, Some("sandytest"), None).await;
+    assert_eq!(entities.len(), 1, "expected to get a single result");
+    assert_eq!(entities[0].name, "sandytest");
+
+    // add some attributes
+    let ent3 = modify_entity(
+        &mut client,
+        "logger",
+        "svc",
+        vec![
+            (str("org"), vec!["hr", "recruiting"]),
+            (str("office"), vec!["remote", "nyc"]),
+        ],
+        vec![],
+    )
+    .await;
+    assert!(ent3.attributes.contains_key("org"));
+    assert!(ent3.attributes.contains_key("office"));
+    assert_eq!(
+        ent3.attributes
+            .get("org")
+            .expect("Could not find org attrib")
+            .values
+            .len(),
+        2
+    );
+    assert_eq!(
+        ent3.attributes
+            .get("office")
+            .expect("Could not find office attrib")
+            .values
+            .len(),
+        2
+    );
+
+    // remove some attributes
+    let ent3 = modify_entity(
+        &mut client,
+        "logger",
+        "svc",
+        vec![],
+        vec![(str("office"), vec!["remote"])],
+    )
+    .await;
+    assert!(ent3.attributes.contains_key("org"));
+    assert!(ent3.attributes.contains_key("office"));
+    assert_eq!(
+        ent3.attributes
+            .get("org")
+            .expect("Could not find org attrib")
+            .values
+            .len(),
+        2
+    );
+    assert_eq!(
+        ent3.attributes
+            .get("office")
+            .expect("Could not find office attrib")
+            .values[0],
+        "nyc"
+    );
+
+    // remove the last value for api attributes and verify it is all cleared
+    // remove some attributes
+    let ent3 = modify_entity(
+        &mut client,
+        "logger",
+        "svc",
+        vec![],
+        vec![(str("office"), vec!["nyc"])],
+    )
+    .await;
+    assert!(ent3.attributes.contains_key("org"));
+    assert!(!ent3.attributes.contains_key("office"));
+    assert_eq!(
+        ent3.attributes
+            .get("org")
+            .expect("Could not find auth attrib")
+            .values
+            .len(),
+        2
+    );
+
+    let ent3 = remove_entity(&mut client, "logger", "svc").await;
+    assert_eq!(ent3.name, "logger");
+    assert_eq!(ent3.typestr, "svc");
 }

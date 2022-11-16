@@ -2,28 +2,15 @@ syntax = "proto3";
 package gatehouse;
 
 import "common.proto";
+import "entities.proto";
 import "targets.proto";
-
-/** Describes an entity and its attributes that will be tested against policies for a target */
-message Entity {
-    // the identity of the entity (case insensitive)
-    // ex: "johndoe@email.com"
-    string id = 1;
-
-    // type string (case insensitive)
-    // ex: "email"
-    string type = 2;
-
-    // entity attributes
-    map<string, common.AttributeValues> attributes = 3;
-}
 
 /** The main Gatehouse server */
 service Gatehouse {
     // add a new target 
     rpc AddTarget (targets.AddTargetRequest) returns (targets.TargetResponse);
 
-    // add an action to an existing target
+    // modify an existing target
     rpc ModifyTarget (targets.ModifyTargetRequest) returns (targets.TargetResponse);
 
     // remove an existing target
@@ -31,4 +18,16 @@ service Gatehouse {
 
     // get all existing targets
     rpc GetTargets(targets.GetAllTargetsRequest) returns (targets.MultiTargetResponse);
+
+    // add a new entity
+    rpc AddEntity (entities.AddEntityRequest) returns (entities.EntityResponse);
+
+    // modify an existing entity
+    rpc ModifyEntity (entities.ModifyEntityRequest) returns (entities.EntityResponse);
+
+    // remove an existing entity
+    rpc RemoveEntity (entities.RemoveEntityRequest) returns (entities.EntityResponse);
+
+    // get all entities (or filter)
+    rpc GetEntities (entities.GetAllEntitiesRequest) returns (entities.MultiEntityResponse);
 }
