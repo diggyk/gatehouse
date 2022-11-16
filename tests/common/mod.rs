@@ -2,6 +2,9 @@ use std::collections::HashMap;
 
 use async_recursion::async_recursion;
 use gatehouse::proto::common::AttributeValues;
+use gatehouse::proto::entities::{
+    AddEntityRequest, Entity, GetAllEntitiesRequest, ModifyEntityRequest, RemoveEntityRequest,
+};
 use tokio::fs::read_dir;
 use tokio::process::Command;
 use tonic::transport::Channel;
@@ -118,6 +121,88 @@ pub async fn get_targets(
         .expect("Failed to get all targets")
         .into_inner()
         .targets
+}
+
+/// Adds a single entity
+pub async fn add_entity(
+    client: &mut GatehouseClient<Channel>,
+    name: &str,
+    typestr: &str,
+    attributes: Vec<(String, Vec<&str>)>,
+) -> Entity {
+    let attributes = to_attribs(attributes);
+
+    client
+        .add_entity(AddEntityRequest {
+            name: str(name),
+            typestr: str(typestr),
+            attributes,
+        })
+        .await
+        .expect("Failed to add entity")
+        .into_inner()
+        .entity
+        .expect("No target returned after creation")
+}
+
+/// Modify a entity
+pub async fn modify_entity(
+    client: &mut GatehouseClient<Channel>,
+    name: &str,
+    typestr: &str,
+    add_attributes: Vec<(String, Vec<&str>)>,
+    remove_attributes: Vec<(String, Vec<&str>)>,
+) -> Entity {
+    let add_attributes = to_attribs(add_attributes);
+    let remove_attributes = to_attribs(remove_attributes);
+
+    client
+        .modify_entity(ModifyEntityRequest {
+            name: str(name),
+            typestr: str(typestr),
+            add_attributes,
+            remove_attributes,
+        })
+        .await
+        .expect("Failed to modify entity")
+        .into_inner()
+        .entity
+        .expect("No entity returned after update")
+}
+
+/// Remove entity
+pub async fn remove_entity(
+    client: &mut GatehouseClient<Channel>,
+    name: &str,
+    typestr: &str,
+) -> Entity {
+    client
+        .remove_entity(RemoveEntityRequest {
+            name: str(name),
+            typestr: str(typestr),
+        })
+        .await
+        .expect("Failed to add entity")
+        .into_inner()
+        .entity
+        .expect("No entity returned after deletion")
+}
+
+/// Get all entities
+pub async fn get_entities(
+    client: &mut GatehouseClient<Channel>,
+    name: Option<&str>,
+    typestr: Option<&str>,
+) -> Vec<Entity> {
+    let name = name.map(str);
+    let typestr = typestr.map(str);
+
+    client
+        .get_entities(GetAllEntitiesRequest { name, typestr })
+        .await
+        .expect("Failed to get all targets")
+        .into_inner()
+        .entities
 }
 
 #[async_recursion]

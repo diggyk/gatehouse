@@ -70,7 +70,7 @@ Gatehouse then evaluates this request against the known policies for that `targe
 # MVP ToDos
 
 - [x] CRUD Target and Actions
-- [ ] CRUD Entities
+- [x] CRUD Entities
 - [ ] CRUD Groups and Group membership
 - [ ] CRUD Roles
 - [ ] CRUD Policies
