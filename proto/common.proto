@@ -1,0 +1,8 @@
+syntax = "proto3";
+package common;
+
+/** The list of values tied to an attribute */
+message AttributeValues {
+    // the list of values
+    repeated string values = 1;
+}

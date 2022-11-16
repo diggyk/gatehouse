@@ -1,11 +1,7 @@
 syntax = "proto3";
 package targets;
 
-/** The list of values tied to an attribute */
-message AttributeValues {
-    // the list of values
-    repeated string values = 1;
-}
+import "common.proto";
 
 /** Describes a target */
 message Target {
@@ -21,7 +17,7 @@ message Target {
     repeated string actions = 3;
 
     // target attributes
-    map<string, AttributeValues> attributes = 4;
+    map<string, common.AttributeValues> attributes = 4;
 }
 
 /** Request message for adding a new target */
@@ -38,7 +34,7 @@ message AddTargetRequest {
     repeated string actions = 3;
 
     // target attributes
-    map<string, AttributeValues> attributes = 4;
+    map<string, common.AttributeValues> attributes = 4;
 }
 
 /** Request to modify a target */
@@ -55,13 +51,13 @@ message ModifyTargetRequest {
     repeated string add_actions = 3;
 
     // list of attributes to add
-    map<string, AttributeValues> add_attributes = 4;
+    map<string, common.AttributeValues> add_attributes = 4;
 
     // list of actions to add
     repeated string remove_actions = 5;
 
     // list of attributes to add
-    map<string, AttributeValues> remove_attributes = 6;
+    map<string, common.AttributeValues> remove_attributes = 6;
 }
 
 /** Request to add actions to an existing target */

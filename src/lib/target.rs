@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 
-use crate::proto::targets::AttributeValues;
+use crate::proto::common::AttributeValues;
 use crate::proto::targets::Target;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

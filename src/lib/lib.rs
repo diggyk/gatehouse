@@ -39,6 +39,11 @@ pub mod proto {
             }
         }
     }
+
+    /// Common protobufs between other packages
+    pub mod common {
+        tonic::include_proto!("common");
+    }
 }
 
 pub(crate) mod ds;

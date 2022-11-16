@@ -1,13 +1,8 @@
 syntax = "proto3";
 package gatehouse;
 
+import "common.proto";
 import "targets.proto";
-
-/** The list of values tied to an attribute */
-message AttributeValues {
-    // the list of values
-    repeated string values = 1;
-}
 
 /** Describes an entity and its attributes that will be tested against policies for a target */
 message Entity {
@@ -20,7 +15,7 @@ message Entity {
     string type = 2;
 
     // entity attributes
-    map<string, AttributeValues> attributes = 3;
+    map<string, common.AttributeValues> attributes = 3;
 }
 
 /** The main Gatehouse server */

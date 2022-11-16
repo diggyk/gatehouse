@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
 use async_recursion::async_recursion;
+use gatehouse::proto::common::AttributeValues;
 use tokio::fs::read_dir;
 use tokio::process::Command;
 use tonic::transport::Channel;
 
 use gatehouse::proto::base::gatehouse_client::GatehouseClient;
 use gatehouse::proto::targets::{
-    AddTargetRequest, AttributeValues, GetAllTargetsRequest, ModifyTargetRequest,
-    RemoveTargetRequest, Target,
+    AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
 };
 
 pub fn str(s: &str) -> String {

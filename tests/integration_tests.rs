@@ -1,6 +1,5 @@
 mod common;
 
-use std::collections::HashMap;
 use std::time::Duration;
 
 use tokio::test;
