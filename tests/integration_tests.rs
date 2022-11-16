@@ -2,13 +2,14 @@ mod common;
 
 use std::time::Duration;
 
+use common::get_roles;
 use tokio::test;
 
 use gatehouse::proto::base::gatehouse_client::GatehouseClient;
 
 use crate::common::{
-    add_entity, add_target, get_entities, get_targets, modify_entity, modify_target, remove_entity,
-    remove_target, str,
+    add_entity, add_role, add_target, get_entities, get_targets, modify_entity, modify_target,
+    remove_entity, remove_role, remove_target, str,
 };
 
 #[test]
@@ -18,6 +19,7 @@ async fn test_crud() {
 
     test_targets().await;
     test_entities().await;
+    test_roles().await;
 }
 
 async fn test_targets() {
@@ -311,4 +313,28 @@ async fn test_entities() {
     let ent3 = remove_entity(&mut client, "logger", "svc").await;
     assert_eq!(ent3.name, "logger");
     assert_eq!(ent3.typestr, "svc");
+}
+
+async fn test_roles() {
+    let mut client = GatehouseClient::connect("http://localhost:6174")
+        .await
+        .expect("could not create client");
+
+    let roles = get_roles(&mut client, None).await;
+    assert_eq!(roles.len(), 0, "expected 0 roles");
+
+    let role1 = add_role(&mut client, "power-admin").await;
+    assert_eq!(role1.name, "power-admin");
+
+    let _ = add_role(&mut client, "launch-guard").await;
+    let _ = add_role(&mut client, "auditer").await;
+
+    let roles = get_roles(&mut client, None).await;
+    assert_eq!(roles.len(), 3, "expected 3 roles");
+
+    let role = remove_role(&mut client, "launch-guard").await;
+    assert_eq!(role.name, "launch-guard");
+
+    let roles = get_roles(&mut client, None).await;
+    assert_eq!(roles.len(), 2, "expected 2 roles");
 }

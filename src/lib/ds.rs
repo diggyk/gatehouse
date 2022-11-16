@@ -11,6 +11,7 @@ use crate::msgs::{DsRequest, DsResponse};
 use crate::proto::entities::{
     AddEntityRequest, Entity, GetAllEntitiesRequest, ModifyEntityRequest, RemoveEntityRequest,
 };
+use crate::proto::roles::{AddRoleRequest, GetAllRolesRequest, RemoveRoleRequest, Role};
 use crate::proto::targets::{
     AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
 };
@@ -26,6 +27,9 @@ pub struct Datastore {
 
     /// HashMap from type string to HashMap of name to registered entity
     entities: HashMap<String, HashMap<String, RegisteredEntity>>,
+
+    /// HashSet of roles
+    roles: HashSet<String>,
 }
 
 impl Datastore {
@@ -43,11 +47,17 @@ impl Datastore {
             .await
             .expect("Could not load entities from backend");
 
+        let roles = backend
+            .load_roles()
+            .await
+            .expect("Could not load roles from backend");
+
         let mut ds = Datastore {
             rx,
             backend,
             targets,
             entities,
+            roles,
         };
 
         tokio::spawn(async move {
@@ -61,14 +71,20 @@ impl Datastore {
     async fn run(&mut self) {
         while let Ok(msg) = self.rx.recv_async().await {
             match msg {
+                // TARGETS
                 DsRequest::AddTarget(req, tx) => self.add_target(req, tx).await,
                 DsRequest::ModifyTarget(req, tx) => self.modify_target(req, tx).await,
                 DsRequest::RemoveTarget(req, tx) => self.remove_target(req, tx).await,
                 DsRequest::GetTargets(req, tx) => self.get_targets(req, tx).await,
+                // ENTITIES
                 DsRequest::AddEntity(req, tx) => self.add_entity(req, tx).await,
                 DsRequest::ModifyEntity(req, tx) => self.modify_entity(req, tx).await,
                 DsRequest::RemoveEntity(req, tx) => self.remove_entity(req, tx).await,
                 DsRequest::GetEntities(req, tx) => self.get_entities(req, tx).await,
+                // ROLES
+                DsRequest::AddRole(req, tx) => self.add_role(req, tx).await,
+                DsRequest::RemoveRole(req, tx) => self.remove_role(req, tx).await,
+                DsRequest::GetRoles(req, tx) => self.get_roles(req, tx).await,
             }
         }
     }
@@ -433,5 +449,77 @@ impl Datastore {
         }
 
         let _ = tx.send(DsResponse::MultipleEntities(entities));
+    }
+
+    /// Add a role
+    async fn add_role(&mut self, req: AddRoleRequest, tx: Sender<DsResponse>) {
+        let role = req.name.to_ascii_lowercase();
+
+        if self.roles.contains(&role) {
+            println!("Role already exists: {}", role);
+
+            // TODO! -- do something with error
+            let _ = tx.send(DsResponse::Error(Status::already_exists(
+                "Role already exists",
+            )));
+            return;
+        }
+
+        // try to persist the new role to the backend and if that succeeds, update it in memory
+        match self.backend.save_role(&role).await {
+            Ok(_) => {
+                let _ = self.roles.insert(role.clone());
+            }
+            Err(err) => {
+                // TODO! -- do something with error
+                let _ = tx.send(DsResponse::Error(Status::internal(err)));
+                return;
+            }
+        }
+
+        let _ = tx.send(DsResponse::SingleRole(Role { name: role }));
+    }
+
+    /// Remove a role
+    async fn remove_role(&mut self, req: RemoveRoleRequest, tx: Sender<DsResponse>) {
+        let role = req.name.to_ascii_lowercase();
+
+        if !self.roles.contains(&role) {
+            println!("Role does not exists: {}", role);
+
+            // TODO! -- do something with error
+            let _ = tx.send(DsResponse::Error(Status::not_found("Role not found")));
+            return;
+        }
+
+        // try to remove the new role to the backend and if that succeeds, update it in memory
+        match self.backend.remove_role(&role).await {
+            Ok(_) => {
+                let _ = self.roles.remove(&role);
+            }
+            Err(err) => {
+                // TODO! -- do something with error
+                let _ = tx.send(DsResponse::Error(Status::internal(err)));
+                return;
+            }
+        }
+
+        let _ = tx.send(DsResponse::SingleRole(Role { name: role }));
+    }
+
+    /// Get all roles
+    async fn get_roles(&mut self, req: GetAllRolesRequest, tx: Sender<DsResponse>) {
+        let mut roles = Vec::new();
+
+        if req.name.is_none() {
+            roles = self
+                .roles
+                .iter()
+                .map(|r| Role { name: r.clone() })
+                .collect();
+        } else if let Some(role) = self.roles.get(&req.name.unwrap()) {
+            roles = vec![Role { name: role.clone() }];
+        }
+        let _ = tx.send(DsResponse::MultipleRoles(roles));
     }
 }

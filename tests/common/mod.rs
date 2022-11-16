@@ -5,6 +5,7 @@ use gatehouse::proto::common::AttributeValues;
 use gatehouse::proto::entities::{
     AddEntityRequest, Entity, GetAllEntitiesRequest, ModifyEntityRequest, RemoveEntityRequest,
 };
+use gatehouse::proto::roles::{AddRoleRequest, GetAllRolesRequest, RemoveRoleRequest, Role};
 use tokio::fs::read_dir;
 use tokio::process::Command;
 use tonic::transport::Channel;
@@ -203,6 +204,40 @@ pub async fn get_entities(
         .expect("Failed to get all targets")
         .into_inner()
         .entities
+}
+
+/// Add a role
+pub async fn add_role(client: &mut GatehouseClient<Channel>, name: &str) -> Role {
+    client
+        .add_role(AddRoleRequest { name: str(name) })
+        .await
+        .expect("Failed to add role")
+        .into_inner()
+        .role
+        .expect("No target returned after creation")
+}
+
+/// Remove role
+pub async fn remove_role(client: &mut GatehouseClient<Channel>, name: &str) -> Role {
+    client
+        .remove_role(RemoveRoleRequest { name: str(name) })
+        .await
+        .expect("Failed to remove role")
+        .into_inner()
+        .role
+        .expect("No entity returned after deletion")
+}
+
+/// Get all roles
+pub async fn get_roles(client: &mut GatehouseClient<Channel>, name: Option<&str>) -> Vec<Role> {
+    let name = name.map(str);
+
+    client
+        .get_roles(GetAllRolesRequest { name })
+        .await
+        .expect("Failed to get all roles")
+        .into_inner()
+        .roles
 }
 
 #[async_recursion]

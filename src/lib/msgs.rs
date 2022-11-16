@@ -8,6 +8,7 @@ use tonic::Status;
 use crate::proto::entities::{
     AddEntityRequest, Entity, GetAllEntitiesRequest, ModifyEntityRequest, RemoveEntityRequest,
 };
+use crate::proto::roles::{AddRoleRequest, GetAllRolesRequest, RemoveRoleRequest, Role};
 use crate::proto::targets::{
     AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
 };
@@ -23,6 +24,10 @@ pub(crate) enum DsRequest {
     ModifyEntity(ModifyEntityRequest, Sender<DsResponse>),
     RemoveEntity(RemoveEntityRequest, Sender<DsResponse>),
     GetEntities(GetAllEntitiesRequest, Sender<DsResponse>),
+
+    AddRole(AddRoleRequest, Sender<DsResponse>),
+    RemoveRole(RemoveRoleRequest, Sender<DsResponse>),
+    GetRoles(GetAllRolesRequest, Sender<DsResponse>),
 }
 
 #[derive(Debug)]
@@ -34,4 +39,7 @@ pub enum DsResponse {
 
     SingleEntity(Entity),
     MultipleEntities(Vec<Entity>),
+
+    SingleRole(Role),
+    MultipleRoles(Vec<Role>),
 }

@@ -34,6 +34,19 @@ pub mod proto {
         }
     }
 
+    /// Role related protobufs
+    pub mod roles {
+        use std::fmt::Display;
+
+        tonic::include_proto!("roles");
+
+        impl Display for Role {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "role[{}]", self.name)
+            }
+        }
+    }
+
     /// Protobufs related to target operations
     pub mod targets {
         use std::fmt::Display;
