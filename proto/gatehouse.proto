@@ -1,12 +1,13 @@
 syntax = "proto3";
 package gatehouse;
 
-import "common.proto";
 import "entities.proto";
+import "roles.proto";
 import "targets.proto";
 
 /** The main Gatehouse server */
 service Gatehouse {
+    /** TARGETS */
     // add a new target 
     rpc AddTarget (targets.AddTargetRequest) returns (targets.TargetResponse);
 
@@ -19,6 +20,7 @@ service Gatehouse {
     // get all existing targets
     rpc GetTargets(targets.GetAllTargetsRequest) returns (targets.MultiTargetResponse);
 
+    /** ENTITIES */
     // add a new entity
     rpc AddEntity (entities.AddEntityRequest) returns (entities.EntityResponse);
 
@@ -30,4 +32,14 @@ service Gatehouse {
 
     // get all entities (or filter)
     rpc GetEntities (entities.GetAllEntitiesRequest) returns (entities.MultiEntityResponse);
+
+    /** ROLES */
+    // add a new role
+    rpc AddRole (roles.AddRoleRequest) returns (roles.RoleResponse);
+
+    // delete an existing role
+    rpc RemoveRole(roles.RemoveRoleRequest) returns (roles.RoleResponse);
+
+    // get all roles (or filter by name to see if a role exists)
+    rpc GetRoles (roles.GetAllRolesRequest) returns (roles.MultiRoleResponse);
 }

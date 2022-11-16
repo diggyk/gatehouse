@@ -12,6 +12,9 @@ use crate::proto::entities::{
     AddEntityRequest, EntityResponse, GetAllEntitiesRequest, ModifyEntityRequest,
     MultiEntityResponse, RemoveEntityRequest,
 };
+use crate::proto::roles::{
+    AddRoleRequest, GetAllRolesRequest, MultiRoleResponse, RemoveRoleRequest, RoleResponse,
+};
 use crate::proto::targets::{
     AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, MultiTargetResponse,
     RemoveTargetRequest, TargetResponse,
@@ -60,6 +63,8 @@ impl GatehouseSvc {
 
 #[tonic::async_trait]
 impl Gatehouse for GatehouseSvc {
+    /** TARGETS */
+
     /// Add a new target
     async fn add_target(
         &self,
@@ -155,6 +160,8 @@ impl Gatehouse for GatehouseSvc {
             _ => return Err(Status::internal("Got unexpected answer from datastore")),
         }
     }
+
+    /** ENTITIES */
 
     /// Add an entity
     async fn add_entity(
@@ -252,6 +259,80 @@ impl Gatehouse for GatehouseSvc {
                 //TODO! -- add metrics
                 println!("Got {} entities", entities.len());
                 return Ok(Response::new(MultiEntityResponse { entities }));
+            }
+            DsResponse::Error(status) => return Err(status),
+            _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /** ROLES */
+
+    /// Add a role
+    async fn add_role(
+        &self,
+        request: Request<AddRoleRequest>,
+    ) -> Result<Response<RoleResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        // ask the datastore to process
+        self.send_ds_request(DsRequest::AddRole(req.clone(), tx), "add role")
+            .await?;
+
+        // Wait for the datastore to respond
+        match self.wait_for_response(rx).await? {
+            DsResponse::SingleRole(role) => {
+                //TODO! -- add metrics
+                println!("Added role {}", role);
+                return Ok(Response::new(RoleResponse { role: Some(role) }));
+            }
+            DsResponse::Error(status) => return Err(status),
+            _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /// Delete a role
+    async fn remove_role(
+        &self,
+        request: Request<RemoveRoleRequest>,
+    ) -> Result<Response<RoleResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        // ask the datastore to process
+        self.send_ds_request(DsRequest::RemoveRole(req.clone(), tx), "remove role")
+            .await?;
+
+        // Wait for the datastore to respond
+        match self.wait_for_response(rx).await? {
+            DsResponse::SingleRole(role) => {
+                //TODO! -- add metrics
+                println!("Removed role {}", role);
+                return Ok(Response::new(RoleResponse { role: Some(role) }));
+            }
+            DsResponse::Error(status) => return Err(status),
+            _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /// Get all roles (or a specific one by name)
+    async fn get_roles(
+        &self,
+        request: Request<GetAllRolesRequest>,
+    ) -> Result<Response<MultiRoleResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        // ask the datastore to process
+        self.send_ds_request(DsRequest::GetRoles(req.clone(), tx), "get roles")
+            .await?;
+
+        // Wait for the datastore to respond
+        match self.wait_for_response(rx).await? {
+            DsResponse::MultipleRoles(roles) => {
+                //TODO! -- add metrics
+                println!("Get {} roles", roles.len());
+                return Ok(Response::new(MultiRoleResponse { roles }));
             }
             DsResponse::Error(status) => return Err(status),
             _ => return Err(Status::internal("Got unexpected answer from datastore")),

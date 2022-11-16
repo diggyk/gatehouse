@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::entity::RegisteredEntity;
 use crate::target::RegisteredTarget;
@@ -14,6 +14,10 @@ impl FileStorage {
             .expect("Could not create file backend storage");
 
         tokio::fs::create_dir_all(format!("{}/entities/", basepath))
+            .await
+            .expect("Could not create file backend storage");
+
+        tokio::fs::create_dir_all(format!("{}/roles/", basepath))
             .await
             .expect("Could not create file backend storage");
 
@@ -136,5 +140,45 @@ impl FileStorage {
         }
 
         Ok(targets)
+    }
+
+    pub async fn save_role(&self, role: &str) -> Result<(), String> {
+        let target_path = format!("{}/roles/{}", self.basepath, role);
+
+        tokio::fs::write(target_path, role)
+            .await
+            .map_err(|err| err.to_string())?;
+
+        Ok(())
+    }
+
+    pub async fn remove_role(&self, role: &str) -> Result<(), String> {
+        let target_path = format!("{}/roles/{}", self.basepath, role);
+
+        tokio::fs::remove_file(target_path)
+            .await
+            .map_err(|err| err.to_string())?;
+
+        Ok(())
+    }
+
+    pub async fn load_roles(&self) -> Result<HashSet<String>, String> {
+        let mut roles = HashSet::new();
+
+        let mut dir = tokio::fs::read_dir(format!("{}/roles", self.basepath))
+            .await
+            .expect("Could not read entities from filesystem");
+
+        while let Some(entry) = dir.next_entry().await.map_err(|err| err.to_string())? {
+            let name = tokio::fs::read_to_string(entry.path())
+                .await
+                .map_err(|err| err.to_string())?;
+
+            roles.insert(name.clone());
+
+            println!("Loaded role {}", name);
+        }
+
+        Ok(roles)
     }
 }

@@ -1,0 +1,38 @@
+syntax = "proto3";
+package roles;
+
+/** A singular role */
+message Role {
+    // role name
+    string name = 1;
+}
+
+/** Add role request */
+message AddRoleRequest {
+    // role name to add
+    string name = 1;
+}
+
+/** Remove role request */
+message RemoveRoleRequest {
+    // role name to delete
+    string name = 1;
+}
+
+/** Get all roles request */
+message GetAllRolesRequest {
+    // filter by this exact name
+    optional string name = 1;
+}
+
+/** Single role response */
+message RoleResponse {
+    // the role
+    Role role = 1;
+}
+
+/** Multiple role response */
+message MultiRoleResponse {
+    // the roles
+    repeated Role roles = 1;
+}
