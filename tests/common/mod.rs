@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use async_recursion::async_recursion;
 use tokio::fs::read_dir;
 use tokio::process::Command;
@@ -5,12 +7,26 @@ use tonic::transport::Channel;
 
 use gatehouse::proto::base::gatehouse_client::GatehouseClient;
 use gatehouse::proto::targets::{
-    AddTargetActionRequest, AddTargetRequest, GetAllTargetsRequest, RemoveTargetActionRequest,
+    AddTargetRequest, AttributeValues, GetAllTargetsRequest, ModifyTargetRequest,
     RemoveTargetRequest, Target,
 };
 
 pub fn str(s: &str) -> String {
     s.to_string()
+}
+
+pub fn to_attribs(attributes: Vec<(String, Vec<&str>)>) -> HashMap<String, AttributeValues> {
+    attributes
+        .into_iter()
+        .map(|kv| {
+            (
+                kv.0,
+                AttributeValues {
+                    values: kv.1.into_iter().map(str).collect(),
+                },
+            )
+        })
+        .collect()
 }
 
 /// Adds a single target
@@ -19,13 +35,17 @@ pub async fn add_target(
     name: &str,
     typestr: &str,
     actions: Vec<&str>,
+    attributes: Vec<(String, Vec<&str>)>,
 ) -> Target {
     let actions = actions.into_iter().map(str).collect();
+    let attributes = to_attribs(attributes);
+
     client
         .add_target(AddTargetRequest {
             name: str(name),
             typestr: str(typestr),
             actions,
+            attributes,
         })
         .await
         .expect("Failed to add target")
@@ -34,43 +54,32 @@ pub async fn add_target(
         .expect("No target returned after creation")
 }
 
-/// Add actions to a target
-pub async fn add_target_actions(
+/// Modify a target
+pub async fn modify_target(
     client: &mut GatehouseClient<Channel>,
     name: &str,
     typestr: &str,
-    actions: Vec<&str>,
+    add_actions: Vec<&str>,
+    add_attributes: Vec<(String, Vec<&str>)>,
+    remove_actions: Vec<&str>,
+    remove_attributes: Vec<(String, Vec<&str>)>,
 ) -> Target {
-    let actions = actions.into_iter().map(str).collect();
-    client
-        .add_target_action(AddTargetActionRequest {
-            name: str(name),
-            typestr: str(typestr),
-            actions,
-        })
-        .await
-        .expect("Failed to add target")
-        .into_inner()
-        .target
-        .expect("No target returned after update")
-}
+    let add_actions = add_actions.into_iter().map(str).collect();
+    let add_attributes = to_attribs(add_attributes);
+    let remove_actions = remove_actions.into_iter().map(str).collect();
+    let remove_attributes = to_attribs(remove_attributes);
 
-/// Remove actions from a target
-pub async fn remove_target_actions(
-    client: &mut GatehouseClient<Channel>,
-    name: &str,
-    typestr: &str,
-    actions: Vec<&str>,
-) -> Target {
-    let actions = actions.into_iter().map(str).collect();
     client
-        .remove_target_action(RemoveTargetActionRequest {
+        .modify_target(ModifyTargetRequest {
             name: str(name),
             typestr: str(typestr),
-            actions,
+            add_actions,
+            add_attributes,
+            remove_actions,
+            remove_attributes,
         })
         .await
-        .expect("Failed to add target")
+        .expect("Failed to modify target")
         .into_inner()
         .target
         .expect("No target returned after update")

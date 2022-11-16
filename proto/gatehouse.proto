@@ -1,7 +1,13 @@
 syntax = "proto3";
 package gatehouse;
+
 import "targets.proto";
 
+/** The list of values tied to an attribute */
+message AttributeValues {
+    // the list of values
+    repeated string values = 1;
+}
 
 /** Describes an entity and its attributes that will be tested against policies for a target */
 message Entity {
@@ -14,23 +20,20 @@ message Entity {
     string type = 2;
 
     // entity attributes
-    map<string, string> attributes = 3;
+    map<string, AttributeValues> attributes = 3;
 }
 
 /** The main Gatehouse server */
 service Gatehouse {
     // add a new target 
-    rpc AddTarget (targets.AddTargetRequest) returns (targets.AddTargetResponse);
+    rpc AddTarget (targets.AddTargetRequest) returns (targets.TargetResponse);
 
     // add an action to an existing target
-    rpc AddTargetAction (targets.AddTargetActionRequest) returns (targets.AddTargetActionResponse);
-
-    // remove an action from an existing target
-    rpc RemoveTargetAction(targets.RemoveTargetActionRequest) returns (targets.RemoveTargetActionResponse);
+    rpc ModifyTarget (targets.ModifyTargetRequest) returns (targets.TargetResponse);
 
     // remove an existing target
-    rpc RemoveTarget(targets.RemoveTargetRequest) returns (targets.RemoveTargetResponse);
+    rpc RemoveTarget(targets.RemoveTargetRequest) returns (targets.TargetResponse);
 
     // get all existing targets
-    rpc GetTargets(targets.GetAllTargetsRequest) returns (targets.GetAllTargetsResponse);
+    rpc GetTargets(targets.GetAllTargetsRequest) returns (targets.MultiTargetResponse);
 }

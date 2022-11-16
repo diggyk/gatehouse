@@ -2,14 +2,13 @@
 
 //! The datastore holds all the policies, targets, and internal PIP data
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tokio::sync::oneshot::Sender;
 use tonic::Status;
 
 use crate::msgs::{DsRequest, DsResponse};
 use crate::proto::targets::{
-    AddTargetActionRequest, AddTargetRequest, GetAllTargetsRequest, RemoveTargetActionRequest,
-    RemoveTargetRequest, Target,
+    AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
 };
 use crate::storage::file::FileStorage;
 use crate::target::RegisteredTarget;
@@ -49,11 +48,8 @@ impl Datastore {
     async fn run(&mut self) {
         while let Ok(msg) = self.rx.recv_async().await {
             match msg {
-                DsRequest::AddTarget(req, tx) => {
-                    self.add_target(req, tx).await;
-                }
-                DsRequest::AddTargetActions(req, tx) => self.add_target_action(req, tx).await,
-                DsRequest::RemoveTargetActions(req, tx) => self.remove_target_action(req, tx).await,
+                DsRequest::AddTarget(req, tx) => self.add_target(req, tx).await,
+                DsRequest::ModifyTarget(req, tx) => self.modify_target(req, tx).await,
                 DsRequest::RemoveTarget(req, tx) => self.remove_target(req, tx).await,
                 DsRequest::GetTargets(req, tx) => self.get_targets(req, tx).await,
             }
@@ -83,7 +79,13 @@ impl Datastore {
             return;
         }
 
-        let new_target = RegisteredTarget::new(&name, &typestr, req.actions);
+        // convert the attributes to a hashmap
+        let mut attributes = HashMap::new();
+        for attrib in req.attributes {
+            attributes.insert(attrib.0, HashSet::from_iter(attrib.1.values));
+        }
+
+        let new_target = RegisteredTarget::new(&name, &typestr, req.actions, attributes);
 
         match self.backend.save_target(new_target.clone()).await {
             Ok(_) => {
@@ -100,8 +102,8 @@ impl Datastore {
         let _ = tx.send(DsResponse::SingleTarget(new_target.into()));
     }
 
-    /// Add an action to an existing target
-    async fn add_target_action(&mut self, req: AddTargetActionRequest, tx: Sender<DsResponse>) {
+    /// Modify and existing target
+    async fn modify_target(&mut self, req: ModifyTargetRequest, tx: Sender<DsResponse>) {
         let name = req.name.to_ascii_lowercase();
         let typestr = req.typestr.to_ascii_lowercase();
 
@@ -122,62 +124,40 @@ impl Datastore {
             return;
         }
 
+        // we'll work with a clone of the target in case persistence fails
         let mut updated_target = typed_targets.get(&name).unwrap().clone();
-        for action in req.actions {
+
+        // update actions
+        for action in req.add_actions {
             updated_target.actions.insert(action.to_ascii_lowercase());
         }
+        for action in req.remove_actions {
+            updated_target.actions.remove(&action.to_ascii_lowercase());
+        }
 
-        match self.backend.save_target(updated_target.clone()).await {
-            Ok(_) => {
-                let _ = typed_targets.insert(name.clone(), updated_target.clone());
+        // update attributes
+        for attrib in req.add_attributes {
+            let key = attrib.0;
+            let values = attrib.1.values;
+
+            let attrib_entry = updated_target.attributes.entry(key).or_default();
+            attrib_entry.extend(values);
+        }
+        for attrib in req.remove_attributes {
+            let key = attrib.0;
+            let values = attrib.1.values;
+
+            if let Some(current_values) = updated_target.attributes.get_mut(&key) {
+                for value in values {
+                    current_values.remove(&value);
+                }
+
+                if current_values.is_empty() {
+                    updated_target.attributes.remove(&key);
+                }
             }
-            Err(err) => {
-                // TODO! -- do something with error
-                let _ = tx.send(DsResponse::Error(Status::internal(err)));
-                return;
-            }
         }
 
-        // TODO! -- do something with error
-        let _ = tx.send(DsResponse::SingleTarget(updated_target.clone().into()));
-    }
-
-    /// Remove an action from an existing target
-    async fn remove_target_action(
-        &mut self,
-        req: RemoveTargetActionRequest,
-        tx: Sender<DsResponse>,
-    ) {
-        let name = req.name.to_ascii_lowercase();
-        let typestr = req.typestr.to_ascii_lowercase();
-
-        // make sure the target type exists
-        if !self.targets.contains_key(&typestr) {
-            // TODO! -- do something with error
-            let _ = tx.send(DsResponse::Error(Status::not_found(
-                "Could not find target by type",
-            )));
-            return;
-        }
-
-        // make sure the target exists
-        let typed_targets = self.targets.get_mut(&typestr).unwrap();
-        if !(typed_targets.contains_key(&name)) {
-            // TODO! -- do something with error
-            let _ = tx.send(DsResponse::Error(Status::not_found(
-                "Could not find target by name",
-            )));
-            return;
-        }
-
-        // create a new target and update it
-        let mut updated_target = typed_targets.get(&name).unwrap().clone();
-        for action in req.actions {
-            let action = action.to_ascii_lowercase();
-            updated_target.actions.remove(&action);
-        }
-
-        // try to persist the new target to the backend and if that succeeds, update it in memory
         match self.backend.save_target(updated_target.clone()).await {
             Ok(_) => {
                 let _ = typed_targets.insert(name.clone(), updated_target.clone());

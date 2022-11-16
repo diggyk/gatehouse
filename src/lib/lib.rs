@@ -17,16 +17,24 @@ pub mod proto {
 
         impl Display for Target {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let attribvals = self
+                    .attributes
+                    .iter()
+                    .map(|kv| format!(" {}: {}", kv.0, kv.1.values.join(", ")))
+                    .collect::<Vec<String>>()
+                    .join(" ");
+
                 write!(
                     f,
-                    "{}/{}: {}",
+                    "{}/{}: {} // {}",
                     self.typestr,
                     self.name,
                     self.actions
                         .iter()
                         .map(|s| s.to_string())
                         .collect::<Vec<String>>()
-                        .join(",")
+                        .join(", "),
+                    attribvals
                 )
             }
         }
