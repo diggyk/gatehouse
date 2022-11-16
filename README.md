@@ -11,7 +11,7 @@ Gatehouse will also have an internal Policy Information Point to map entities to
 
 # MVP ToDos
 
-- [ ] CRUD Target and Actions
+- [x] CRUD Target and Actions
 - [ ] CRUD Entities
 - [ ] CRUD Groups and Group membership
 - [ ] CRUD roles
