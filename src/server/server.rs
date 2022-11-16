@@ -8,7 +8,8 @@ use gatehouse::proto::base::gatehouse_server::GatehouseServer;
 use gatehouse::svc::GatehouseSvc;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// Our main function for the server
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "[::1]:6174".parse()?;
     let svc = GatehouseSvc::new().await;
 

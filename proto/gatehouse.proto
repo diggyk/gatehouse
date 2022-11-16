@@ -24,4 +24,13 @@ service Gatehouse {
 
     // add an action to an existing target
     rpc AddTargetAction (targets.AddTargetActionRequest) returns (targets.AddTargetActionResponse);
+
+    // remove an action from an existing target
+    rpc RemoveTargetAction(targets.RemoveTargetActionRequest) returns (targets.RemoveTargetActionResponse);
+
+    // remove an existing target
+    rpc RemoveTarget(targets.RemoveTargetRequest) returns (targets.RemoveTargetResponse);
+
+    // get all existing targets
+    rpc GetTargets(targets.GetAllTargetsRequest) returns (targets.GetAllTargetsResponse);
 }

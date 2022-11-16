@@ -27,6 +27,8 @@ pub struct Target {
 pub enum TargetCmds {
     Add(TargetCmdAddArgs),
     AddAction(TargetCmdAddActionArgs),
+    RemoveAction(TargetCmdAddActionArgs),
+    Remove(TargetCmdRemoveArgs),
 }
 
 #[derive(Args, Debug)]
@@ -42,6 +44,14 @@ pub struct TargetCmdAddArgs {
         help = "Repeat arg to specify multiple actions"
     )]
     pub actions: Vec<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct TargetCmdRemoveArgs {
+    #[arg(help = "Type (case-insensitive)")]
+    pub typestr: String,
+    #[arg(help = "Name (case-insensitive)")]
+    pub name: String,
 }
 
 #[derive(Args, Debug)]

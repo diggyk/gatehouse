@@ -32,6 +32,19 @@ impl FileStorage {
         Ok(())
     }
 
+    pub async fn remove_target(&self, tgt: RegisteredTarget) -> Result<(), String> {
+        let target_path = format!(
+            "{}/targets/{}-{}.json",
+            self.basepath, tgt.typestr, tgt.name
+        );
+
+        tokio::fs::remove_file(target_path)
+            .await
+            .map_err(|err| err.to_string())?;
+
+        Ok(())
+    }
+
     pub async fn load_targets(
         &self,
     ) -> Result<HashMap<String, HashMap<String, RegisteredTarget>>, String> {
