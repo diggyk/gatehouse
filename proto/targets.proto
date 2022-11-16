@@ -1,6 +1,12 @@
 syntax = "proto3";
 package targets;
 
+/** The list of values tied to an attribute */
+message AttributeValues {
+    // the list of values
+    repeated string values = 1;
+}
+
 /** Describes a target */
 message Target {
     // the nameentity of the target (case insensitive)
@@ -13,6 +19,9 @@ message Target {
 
     // the supported actions for this target 
     repeated string actions = 3;
+
+    // target attributes
+    map<string, AttributeValues> attributes = 4;
 }
 
 /** Request message for adding a new target */
@@ -27,15 +36,13 @@ message AddTargetRequest {
 
     // (Optional) list of actions to register for this target
     repeated string actions = 3;
-}
-/** Target created */
-message AddTargetResponse {
-    // The target added
-    Target target = 1;
+
+    // target attributes
+    map<string, AttributeValues> attributes = 4;
 }
 
-/** Request to add actions to an existing target */
-message AddTargetActionRequest {
+/** Request to modify a target */
+message ModifyTargetRequest {
     // the nameentity of the target (case insensitive)
     // ex: "maindb"
     string name = 1;
@@ -44,32 +51,17 @@ message AddTargetActionRequest {
     // ex: "database"
     string typestr = 2; 
 
-    // List of actions to register for this target
-    repeated string actions = 3;
-}
-/** Updated target */
-message AddTargetActionResponse {
-    // The target updated
-    Target target = 1;
-}
+    // list of actions to add
+    repeated string add_actions = 3;
 
-/** Request to remove actions from an existing target */
-message RemoveTargetActionRequest {
-    // the nameentity of the target (case insensitive)
-    // ex: "maindb"
-    string name = 1;
+    // list of attributes to add
+    map<string, AttributeValues> add_attributes = 4;
 
-    // the type of target (case insensitive)
-    // ex: "database"
-    string typestr = 2; 
+    // list of actions to add
+    repeated string remove_actions = 5;
 
-    // List of actions to remove from this target
-    repeated string actions = 3;
-}
-/** Updated target */
-message RemoveTargetActionResponse {
-    // The target updated
-    Target target = 1;
+    // list of attributes to add
+    map<string, AttributeValues> remove_attributes = 6;
 }
 
 /** Request to add actions to an existing target */
@@ -82,11 +74,6 @@ message RemoveTargetRequest {
     // ex: "database"
     string typestr = 2; 
 }
-/** The removed target */
-message RemoveTargetResponse {
-    // The target removed
-    Target target = 1;
-}
 
 /** Request a list of all targets */
 message GetAllTargetsRequest {
@@ -96,8 +83,15 @@ message GetAllTargetsRequest {
     // the optional type to limit responses
     optional string typestr = 2;
 }
-/** The list of returned targets */
-message GetAllTargetsResponse {
-    // list of targets found
+
+/** The single target response */
+message TargetResponse {
+    // the target
+    Target target = 1;
+}
+
+/** A response with multiple targets */
+message MultiTargetResponse {
+    // list of targets
     repeated Target targets = 1;
 }

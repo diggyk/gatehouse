@@ -6,15 +6,13 @@ use tokio::sync::oneshot::Sender;
 use tonic::Status;
 
 use crate::proto::targets::{
-    AddTargetActionRequest, AddTargetRequest, GetAllTargetsRequest, RemoveTargetActionRequest,
-    RemoveTargetRequest, Target,
+    AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
 };
 
 #[derive(Debug)]
 pub(crate) enum DsRequest {
     AddTarget(AddTargetRequest, Sender<DsResponse>),
-    AddTargetActions(AddTargetActionRequest, Sender<DsResponse>),
-    RemoveTargetActions(RemoveTargetActionRequest, Sender<DsResponse>),
+    ModifyTarget(ModifyTargetRequest, Sender<DsResponse>),
     RemoveTarget(RemoveTargetRequest, Sender<DsResponse>),
     GetTargets(GetAllTargetsRequest, Sender<DsResponse>),
 }

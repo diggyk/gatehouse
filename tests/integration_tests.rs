@@ -1,14 +1,13 @@
 mod common;
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use tokio::test;
 
 use gatehouse::proto::base::gatehouse_client::GatehouseClient;
 
-use crate::common::{
-    add_target, add_target_actions, get_targets, remove_target, remove_target_actions,
-};
+use crate::common::{add_target, get_targets, modify_target, remove_target, str};
 
 #[test]
 async fn test_targets() {
@@ -25,17 +24,25 @@ async fn test_targets() {
     assert_eq!(targets.len(), 0, "targets should have been 0");
 
     // add a target
-    let tgt1 = add_target(&mut client, "db1", "database", Vec::new()).await;
+    let tgt1 = add_target(&mut client, "db1", "database", vec![], vec![]).await;
     assert_eq!(tgt1.name, "db1");
     assert_eq!(tgt1.typestr, "database");
     assert_eq!(tgt1.actions.len(), 0);
 
     // add some more targets
-    let tgt2 = add_target(&mut client, "db2", "database", vec!["read", "write"]).await;
-    let tgt3 = add_target(&mut client, "www1", "website", Vec::new()).await;
-    let _tgt4 = add_target(&mut client, "www2", "website", Vec::new()).await;
-    let _tgt5 = add_target(&mut client, "login", "website", Vec::new()).await;
+    let tgt2 = add_target(
+        &mut client,
+        "db2",
+        "database",
+        vec!["read", "write"],
+        vec![(str("role"), vec!["prod"])],
+    )
+    .await;
+    let tgt3 = add_target(&mut client, "www1", "website", vec![], vec![]).await;
+    let _tgt4 = add_target(&mut client, "www2", "website", vec![], vec![]).await;
+    let _tgt5 = add_target(&mut client, "login", "website", vec![], vec![]).await;
     assert_eq!(tgt2.actions.len(), 2);
+    assert!(tgt2.attributes.contains_key("role"));
 
     // make sure all the targets are there
     let targets = get_targets(&mut client, None, None).await;
@@ -57,14 +64,110 @@ async fn test_targets() {
     assert_eq!(tgt3.name, "www1");
     assert_eq!(tgt3.typestr, "website");
     assert_eq!(tgt3.actions.len(), 0);
-    let tgt3 = add_target_actions(&mut client, "www1", "website", vec!["login", "logout"]).await;
+    let tgt3 = modify_target(
+        &mut client,
+        "www1",
+        "website",
+        vec!["login", "logout"],
+        vec![],
+        vec![],
+        vec![],
+    )
+    .await;
     assert_eq!(tgt3.name, "www1");
     assert_eq!(tgt3.typestr, "website");
     assert_eq!(tgt3.actions.len(), 2);
 
-    let tgt3 = remove_target_actions(&mut client, "www1", "website", vec!["logout"]).await;
+    // remove an action and add some attributes
+    let tgt3 = modify_target(
+        &mut client,
+        "www1",
+        "website",
+        vec![],
+        vec![
+            (str("auth"), vec!["basic", "gssapi"]),
+            (str("api"), vec!["json", "xml"]),
+        ],
+        vec!["logout"],
+        vec![],
+    )
+    .await;
     assert_eq!(tgt3.actions.len(), 1);
     assert_eq!(tgt3.actions[0], "login");
+    assert!(tgt3.attributes.contains_key("auth"));
+    assert!(tgt3.attributes.contains_key("api"));
+    assert_eq!(
+        tgt3.attributes
+            .get("auth")
+            .expect("Could not find auth attrib")
+            .values
+            .len(),
+        2
+    );
+    assert_eq!(
+        tgt3.attributes
+            .get("api")
+            .expect("Could not find api attrib")
+            .values
+            .len(),
+        2
+    );
+
+    // remove some attributes
+    let tgt3 = modify_target(
+        &mut client,
+        "www1",
+        "website",
+        vec![],
+        vec![],
+        vec![],
+        vec![(str("api"), vec!["json"])],
+    )
+    .await;
+    assert_eq!(tgt3.actions.len(), 1);
+    assert_eq!(tgt3.actions[0], "login");
+    assert!(tgt3.attributes.contains_key("auth"));
+    assert!(tgt3.attributes.contains_key("api"));
+    assert_eq!(
+        tgt3.attributes
+            .get("auth")
+            .expect("Could not find auth attrib")
+            .values
+            .len(),
+        2
+    );
+    assert_eq!(
+        tgt3.attributes
+            .get("api")
+            .expect("Could not find api attrib")
+            .values[0],
+        "xml"
+    );
+
+    // remove the last value for api attributes and verify it is all cleared
+    // remove some attributes
+    let tgt3 = modify_target(
+        &mut client,
+        "www1",
+        "website",
+        vec![],
+        vec![],
+        vec![],
+        vec![(str("api"), vec!["xml"])],
+    )
+    .await;
+    assert_eq!(tgt3.actions.len(), 1);
+    assert_eq!(tgt3.actions[0], "login");
+    assert!(tgt3.attributes.contains_key("auth"));
+    assert!(!tgt3.attributes.contains_key("api"));
+    assert_eq!(
+        tgt3.attributes
+            .get("auth")
+            .expect("Could not find auth attrib")
+            .values
+            .len(),
+        2
+    );
 
     let tgt3 = remove_target(&mut client, "www1", "website").await;
     assert_eq!(tgt3.name, "www1");
