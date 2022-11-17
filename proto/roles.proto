@@ -5,6 +5,9 @@ package roles;
 message Role {
     // role name
     string name = 1;
+
+    // list of groups to which this role is granted
+    repeated string granted_to = 2;
 }
 
 /** Add role request */

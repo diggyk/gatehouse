@@ -2,6 +2,7 @@ syntax = "proto3";
 package gatehouse;
 
 import "entities.proto";
+import "groups.proto";
 import "roles.proto";
 import "targets.proto";
 
@@ -42,4 +43,17 @@ service Gatehouse {
 
     // get all roles (or filter by name to see if a role exists)
     rpc GetRoles (roles.GetAllRolesRequest) returns (roles.MultiRoleResponse);
+
+    /** GROUPS */
+    // add a new group
+    rpc AddGroup (groups.AddGroupRequest) returns (groups.GroupResponse);
+
+    // modify an existing group
+    rpc ModifyGroup (groups.ModifyGroupRequest) returns (groups.GroupResponse);
+
+    // remove an existing group
+    rpc RemoveGroup (groups.RemoveGroupRequest) returns (groups.GroupResponse);
+
+    // get all groups (or with filters)
+    rpc GetGroups (groups.GetAllGroupsRequest) returns (groups.MultiGroupResponse);
 }

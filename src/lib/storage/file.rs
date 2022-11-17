@@ -1,6 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::entity::RegisteredEntity;
+use crate::group::RegisteredGroup;
+use crate::role::RegisteredRole;
 use crate::target::RegisteredTarget;
 
 pub(crate) struct FileStorage {
@@ -21,12 +23,16 @@ impl FileStorage {
             .await
             .expect("Could not create file backend storage");
 
+        tokio::fs::create_dir_all(format!("{}/groups/", basepath))
+            .await
+            .expect("Could not create file backend storage");
+
         Self {
             basepath: basepath.to_string(),
         }
     }
 
-    pub async fn save_target(&self, tgt: RegisteredTarget) -> Result<(), String> {
+    pub async fn save_target(&self, tgt: &RegisteredTarget) -> Result<(), String> {
         let target_path = format!(
             "{}/targets/{}-{}.json",
             self.basepath, tgt.typestr, tgt.name
@@ -41,7 +47,7 @@ impl FileStorage {
         Ok(())
     }
 
-    pub async fn remove_target(&self, tgt: RegisteredTarget) -> Result<(), String> {
+    pub async fn remove_target(&self, tgt: &RegisteredTarget) -> Result<(), String> {
         let target_path = format!(
             "{}/targets/{}-{}.json",
             self.basepath, tgt.typestr, tgt.name
@@ -84,7 +90,7 @@ impl FileStorage {
         Ok(targets)
     }
 
-    pub async fn save_entity(&self, tgt: RegisteredEntity) -> Result<(), String> {
+    pub async fn save_entity(&self, tgt: &RegisteredEntity) -> Result<(), String> {
         let target_path = format!(
             "{}/entities/{}-{}.json",
             self.basepath, tgt.typestr, tgt.name
@@ -99,7 +105,7 @@ impl FileStorage {
         Ok(())
     }
 
-    pub async fn remove_entity(&self, tgt: RegisteredEntity) -> Result<(), String> {
+    pub async fn remove_entity(&self, tgt: &RegisteredEntity) -> Result<(), String> {
         let target_path = format!(
             "{}/entities/{}-{}.json",
             self.basepath, tgt.typestr, tgt.name
@@ -142,18 +148,20 @@ impl FileStorage {
         Ok(targets)
     }
 
-    pub async fn save_role(&self, role: &str) -> Result<(), String> {
-        let target_path = format!("{}/roles/{}", self.basepath, role);
+    pub async fn save_role(&self, role: &RegisteredRole) -> Result<(), String> {
+        let target_path = format!("{}/roles/{}.json", self.basepath, role.name);
 
-        tokio::fs::write(target_path, role)
+        let json = serde_json::to_string(&role).map_err(|err| err.to_string())?;
+
+        tokio::fs::write(target_path, json)
             .await
             .map_err(|err| err.to_string())?;
 
         Ok(())
     }
 
-    pub async fn remove_role(&self, role: &str) -> Result<(), String> {
-        let target_path = format!("{}/roles/{}", self.basepath, role);
+    pub async fn remove_role(&self, role: &RegisteredRole) -> Result<(), String> {
+        let target_path = format!("{}/roles/{}.json", self.basepath, role.name);
 
         tokio::fs::remove_file(target_path)
             .await
@@ -162,23 +170,78 @@ impl FileStorage {
         Ok(())
     }
 
-    pub async fn load_roles(&self) -> Result<HashSet<String>, String> {
-        let mut roles = HashSet::new();
+    pub async fn load_roles(&self) -> Result<HashMap<String, RegisteredRole>, String> {
+        let mut roles = HashMap::new();
 
         let mut dir = tokio::fs::read_dir(format!("{}/roles", self.basepath))
             .await
             .expect("Could not read entities from filesystem");
 
         while let Some(entry) = dir.next_entry().await.map_err(|err| err.to_string())? {
-            let name = tokio::fs::read_to_string(entry.path())
+            let json = tokio::fs::read_to_string(entry.path())
                 .await
                 .map_err(|err| err.to_string())?;
 
-            roles.insert(name.clone());
+            let role: RegisteredRole =
+                serde_json::from_str(&json).map_err(|err| err.to_string())?;
+            roles.insert(role.name.clone(), role.clone());
 
-            println!("Loaded role {}", name);
+            println!(
+                "Loaded role {} (used by {} groups)",
+                role.name,
+                role.groups.len()
+            );
         }
 
         Ok(roles)
+    }
+
+    pub async fn save_group(&self, group: &RegisteredGroup) -> Result<(), String> {
+        let target_path = format!("{}/groups/{}.json", self.basepath, group.name);
+
+        let json = serde_json::to_string(&group).map_err(|err| err.to_string())?;
+
+        tokio::fs::write(target_path, json)
+            .await
+            .map_err(|err| err.to_string())?;
+
+        Ok(())
+    }
+
+    pub async fn remove_group(&self, group: &RegisteredGroup) -> Result<(), String> {
+        let target_path = format!("{}/groups/{}.json", self.basepath, group.name);
+
+        tokio::fs::remove_file(target_path)
+            .await
+            .map_err(|err| err.to_string())?;
+
+        Ok(())
+    }
+
+    pub async fn load_groups(&self) -> Result<HashMap<String, RegisteredGroup>, String> {
+        let mut groups = HashMap::new();
+
+        let mut dir = tokio::fs::read_dir(format!("{}/groups", self.basepath))
+            .await
+            .expect("Could not read entities from filesystem");
+
+        while let Some(entry) = dir.next_entry().await.map_err(|err| err.to_string())? {
+            let json = tokio::fs::read_to_string(entry.path())
+                .await
+                .map_err(|err| err.to_string())?;
+
+            let group: RegisteredGroup =
+                serde_json::from_str(&json).map_err(|err| err.to_string())?;
+            groups.insert(group.name.clone(), group.clone());
+
+            println!(
+                "Loaded group {}: {} members  {} roles",
+                group.name,
+                group.members.len(),
+                group.roles.len()
+            );
+        }
+
+        Ok(groups)
     }
 }

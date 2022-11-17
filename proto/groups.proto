@@ -1,0 +1,85 @@
+syntax = "proto3";
+package groups;
+
+/** Describes a group member, which may or may not be a registered entity */
+message GroupMember {
+    // the identity of the entity (case insensitive)
+    // ex: "johndoe@email.com"
+    string name = 1;
+
+    // type string (case insensitive)
+    // ex: "email"
+    string typestr = 2;
+}
+
+/** Describes a group */
+message Group {
+    // group name
+    string name = 1;
+
+    // group members
+    repeated GroupMember members = 2;
+
+    // roles granted group members
+    repeated string roles = 3;
+}
+
+/** Request to add a group */
+message AddGroupRequest {
+    // name of the group
+    string name = 1;
+
+    // group members
+    repeated GroupMember members = 2;
+
+    // roles granted group members
+    repeated string roles = 3;
+}
+
+/** Request to modify a group */
+message ModifyGroupRequest {
+    // name of the group to modify
+    string name = 1;
+
+    // group members to add
+    repeated GroupMember add_members = 2;
+
+    // group members to remove
+    repeated GroupMember remove_members = 3;
+
+    // roles to be granted to group members
+    repeated string add_roles = 4;
+
+    // roles to be revoked from group members
+    repeated string remove_roles = 5;
+}
+
+/** Delete group request */
+message RemoveGroupRequest {
+    // name of group to remove
+    string name = 1;
+}
+
+/** Get all groups or optionally filter */
+message GetAllGroupsRequest {
+    // filter by name
+    optional string name = 1;
+
+    // filter by groups with a member
+    optional GroupMember member = 2;
+
+    // filter groups by role
+    optional string role = 3;
+}
+
+/** Single group response */
+message GroupResponse {
+    // the group
+    Group group = 1;
+}
+
+/** Multi group response */
+message MultiGroupResponse {
+    // the groups
+    repeated Group groups = 1;
+}

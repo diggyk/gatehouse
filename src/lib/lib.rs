@@ -34,6 +34,25 @@ pub mod proto {
         }
     }
 
+    /// Group related protobufs
+    pub mod groups {
+        use std::fmt::Display;
+
+        tonic::include_proto!("groups");
+
+        impl Display for Group {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(
+                    f,
+                    "group[{}]: {} members  {} roles",
+                    self.name,
+                    self.members.len(),
+                    self.roles.len()
+                )
+            }
+        }
+    }
+
     /// Role related protobufs
     pub mod roles {
         use std::fmt::Display;
@@ -81,7 +100,9 @@ pub mod proto {
 
 pub(crate) mod ds;
 pub(crate) mod entity;
+pub(crate) mod group;
 pub(crate) mod msgs;
+pub(crate) mod role;
 pub(crate) mod storage;
 pub mod svc;
 pub(crate) mod target;

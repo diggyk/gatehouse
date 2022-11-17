@@ -1,9 +1,14 @@
 use std::collections::HashMap;
+use std::process::Stdio;
 
 use async_recursion::async_recursion;
 use gatehouse::proto::common::AttributeValues;
 use gatehouse::proto::entities::{
     AddEntityRequest, Entity, GetAllEntitiesRequest, ModifyEntityRequest, RemoveEntityRequest,
+};
+use gatehouse::proto::groups::{
+    AddGroupRequest, GetAllGroupsRequest, Group, GroupMember, ModifyGroupRequest,
+    RemoveGroupRequest,
 };
 use gatehouse::proto::roles::{AddRoleRequest, GetAllRolesRequest, RemoveRoleRequest, Role};
 use tokio::fs::read_dir;
@@ -240,9 +245,124 @@ pub async fn get_roles(client: &mut GatehouseClient<Channel>, name: Option<&str>
         .roles
 }
 
+/// Add a group
+pub async fn add_group(
+    client: &mut GatehouseClient<Channel>,
+    name: &str,
+    members: Vec<(&str, &str)>,
+    roles: Vec<&str>,
+) -> Group {
+    let members: Vec<GroupMember> = members
+        .iter()
+        .map(|(n, t)| GroupMember {
+            name: n.to_string(),
+            typestr: t.to_string(),
+        })
+        .collect();
+    let roles = roles.iter().map(|r| r.to_string()).collect();
+
+    let req = AddGroupRequest {
+        name: name.to_string(),
+        members,
+        roles,
+    };
+
+    client
+        .add_group(req)
+        .await
+        .expect("Failed to add group")
+        .into_inner()
+        .group
+        .expect("No group in add group response")
+}
+
+/// Modify a group
+pub async fn modify_group(
+    client: &mut GatehouseClient<Channel>,
+    name: &str,
+    add_members: Vec<(&str, &str)>,
+    add_roles: Vec<&str>,
+    remove_members: Vec<(&str, &str)>,
+    remove_roles: Vec<&str>,
+) -> Group {
+    let add_members: Vec<GroupMember> = add_members
+        .iter()
+        .map(|(n, t)| GroupMember {
+            name: n.to_string(),
+            typestr: t.to_string(),
+        })
+        .collect();
+    let add_roles = add_roles.iter().map(|r| r.to_string()).collect();
+
+    let remove_members: Vec<GroupMember> = remove_members
+        .iter()
+        .map(|(n, t)| GroupMember {
+            name: n.to_string(),
+            typestr: t.to_string(),
+        })
+        .collect();
+    let remove_roles = remove_roles.iter().map(|r| r.to_string()).collect();
+
+    let req = ModifyGroupRequest {
+        name: name.to_string(),
+        add_members,
+        add_roles,
+        remove_members,
+        remove_roles,
+    };
+
+    client
+        .modify_group(req)
+        .await
+        .expect("Failed to modify group")
+        .into_inner()
+        .group
+        .expect("Did not get group after modifications")
+}
+
+/// Remove group
+pub async fn remove_group(client: &mut GatehouseClient<Channel>, name: &str) -> Group {
+    client
+        .remove_group(RemoveGroupRequest {
+            name: name.to_string(),
+        })
+        .await
+        .expect("Failed to remove group")
+        .into_inner()
+        .group
+        .expect("Did not get returned group after removal")
+}
+
+/// Get groups
+pub async fn get_groups(
+    client: &mut GatehouseClient<Channel>,
+    name: Option<&str>,
+    member: Option<(&str, &str)>,
+    role: Option<&str>,
+) -> Vec<Group> {
+    let name = name.map(String::from);
+    let member = member.map(|(name, typestr)| GroupMember {
+        name: name.to_string(),
+        typestr: typestr.to_string(),
+    });
+    let role = role.map(String::from);
+
+    client
+        .get_groups(GetAllGroupsRequest { name, member, role })
+        .await
+        .expect("Could not get groups")
+        .into_inner()
+        .groups
+}
+
 #[async_recursion]
 async fn clear_dir(path: &str) {
-    let mut dir = read_dir(path).await.expect("Could not read tmp dir");
+    let dir = read_dir(path).await;
+    if dir.is_err() {
+        // doesn't exist maybe so let's move on
+        return;
+    }
+    let mut dir = dir.unwrap();
 
     while let Some(entry) = dir
         .next_entry()
@@ -276,6 +396,7 @@ pub async fn run_server() {
         .arg("--bin")
         .arg("gatehouse-server")
         .kill_on_drop(true)
+        .stdout(Stdio::inherit())
         .spawn()
         .expect("Could not start server")
         .wait()

@@ -12,6 +12,10 @@ use crate::proto::entities::{
     AddEntityRequest, EntityResponse, GetAllEntitiesRequest, ModifyEntityRequest,
     MultiEntityResponse, RemoveEntityRequest,
 };
+use crate::proto::groups::{
+    AddGroupRequest, GetAllGroupsRequest, GroupResponse, ModifyGroupRequest, MultiGroupResponse,
+    RemoveGroupRequest,
+};
 use crate::proto::roles::{
     AddRoleRequest, GetAllRolesRequest, MultiRoleResponse, RemoveRoleRequest, RoleResponse,
 };
@@ -35,18 +39,18 @@ impl GatehouseSvc {
 }
 
 impl GatehouseSvc {
-    /// Send a request to the datastore
-    async fn send_ds_request(&self, req: DsRequest, op: &str) -> Result<(), Status> {
+    /// Wait for a response from the datastore
+    async fn call_datastore(
+        &self,
+        req: DsRequest,
+        op: &str,
+        rx: Receiver<DsResponse>,
+    ) -> Result<DsResponse, Status> {
         if let Err(err) = self.dstx.send_async(req).await {
             // TODO! -- add metrics
             eprintln!("{} failed: {:?}", op, err);
             return Err(Status::internal(err.to_string()));
         }
-        Ok(())
-    }
-
-    /// Wait for a response from the datastore
-    async fn wait_for_response(&self, rx: Receiver<DsResponse>) -> Result<DsResponse, Status> {
         tokio::select! {
             _ = sleep(Duration::from_secs(10)) => {
                 // TODO! -- add metrics
@@ -63,7 +67,7 @@ impl GatehouseSvc {
 
 #[tonic::async_trait]
 impl Gatehouse for GatehouseSvc {
-    /** TARGETS */
+    //** TARGETS  **//
 
     /// Add a new target
     async fn add_target(
@@ -73,12 +77,10 @@ impl Gatehouse for GatehouseSvc {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
 
-        // Ask the datastore to add this target
-        self.send_ds_request(DsRequest::AddTarget(req.clone(), tx), "add target")
-            .await?;
-
-        // Wait for the datastore to respond
-        match self.wait_for_response(rx).await? {
+        match self
+            .call_datastore(DsRequest::AddTarget(req.clone(), tx), "add target", rx)
+            .await?
+        {
             DsResponse::SingleTarget(tgt) => {
                 //TODO! -- add metrics
                 println!("Added target {}", tgt);
@@ -97,12 +99,14 @@ impl Gatehouse for GatehouseSvc {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
 
-        // Ask the datastore to update the target
-        self.send_ds_request(DsRequest::ModifyTarget(req.clone(), tx), "modify target")
-            .await?;
-
-        // Wait for the datastore to respond
-        match self.wait_for_response(rx).await? {
+        match self
+            .call_datastore(
+                DsRequest::ModifyTarget(req.clone(), tx),
+                "modify target",
+                rx,
+            )
+            .await?
+        {
             DsResponse::SingleTarget(tgt) => {
                 //TODO! -- add metrics
                 println!("Updated target: {}", tgt);
@@ -121,12 +125,14 @@ impl Gatehouse for GatehouseSvc {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
 
-        // ask the datastore to process
-        self.send_ds_request(DsRequest::RemoveTarget(req.clone(), tx), "remove target")
-            .await?;
-
-        // Wait for the datastore to respond
-        match self.wait_for_response(rx).await? {
+        match self
+            .call_datastore(
+                DsRequest::RemoveTarget(req.clone(), tx),
+                "remove target",
+                rx,
+            )
+            .await?
+        {
             DsResponse::SingleTarget(tgt) => {
                 //TODO! -- add metrics
                 println!("Removed target {}", tgt);
@@ -145,12 +151,10 @@ impl Gatehouse for GatehouseSvc {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
 
-        // ask the datastore to process
-        self.send_ds_request(DsRequest::GetTargets(req.clone(), tx), "get target(s)")
-            .await?;
-
-        // Wait for the datastore to respond
-        match self.wait_for_response(rx).await? {
+        match self
+            .call_datastore(DsRequest::GetTargets(req.clone(), tx), "get target(s)", rx)
+            .await?
+        {
             DsResponse::MultipleTargets(tgts) => {
                 //TODO! -- add metrics
                 println!("Got {} targets", tgts.len());
@@ -161,7 +165,7 @@ impl Gatehouse for GatehouseSvc {
         }
     }
 
-    /** ENTITIES */
+    //** ENTITIES **//
 
     /// Add an entity
     async fn add_entity(
@@ -171,12 +175,11 @@ impl Gatehouse for GatehouseSvc {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
 
-        // ask the datastore to process
-        self.send_ds_request(DsRequest::AddEntity(req.clone(), tx), "add entity")
-            .await?;
-
         // wait for the datastore to respond
-        match self.wait_for_response(rx).await? {
+        match self
+            .call_datastore(DsRequest::AddEntity(req.clone(), tx), "add entity", rx)
+            .await?
+        {
             DsResponse::SingleEntity(entity) => {
                 //TODO! -- add metrics
                 println!("Added entity {}", entity);
@@ -197,12 +200,14 @@ impl Gatehouse for GatehouseSvc {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
 
-        // ask the datastore to process
-        self.send_ds_request(DsRequest::ModifyEntity(req.clone(), tx), "modify entity")
-            .await?;
-
-        // wait for the datastore to respond
-        match self.wait_for_response(rx).await? {
+        match self
+            .call_datastore(
+                DsRequest::ModifyEntity(req.clone(), tx),
+                "modify entity",
+                rx,
+            )
+            .await?
+        {
             DsResponse::SingleEntity(entity) => {
                 //TODO! -- add metrics
                 println!("Modify entity {}", entity);
@@ -223,12 +228,14 @@ impl Gatehouse for GatehouseSvc {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
 
-        // ask the datastore to process
-        self.send_ds_request(DsRequest::RemoveEntity(req.clone(), tx), "remove entity")
-            .await?;
-
-        // wait for the datastore to respond
-        match self.wait_for_response(rx).await? {
+        match self
+            .call_datastore(
+                DsRequest::RemoveEntity(req.clone(), tx),
+                "remove entity",
+                rx,
+            )
+            .await?
+        {
             DsResponse::SingleEntity(entity) => {
                 //TODO! -- add metrics
                 println!("Remove entity {}", entity);
@@ -249,12 +256,10 @@ impl Gatehouse for GatehouseSvc {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
 
-        // ask the datastore to process
-        self.send_ds_request(DsRequest::GetEntities(req.clone(), tx), "get entities")
-            .await?;
-
-        // Wait for the datastore to respond
-        match self.wait_for_response(rx).await? {
+        match self
+            .call_datastore(DsRequest::GetEntities(req.clone(), tx), "get entities", rx)
+            .await?
+        {
             DsResponse::MultipleEntities(entities) => {
                 //TODO! -- add metrics
                 println!("Got {} entities", entities.len());
@@ -265,7 +270,7 @@ impl Gatehouse for GatehouseSvc {
         }
     }
 
-    /** ROLES */
+    //** ROLES **//
 
     /// Add a role
     async fn add_role(
@@ -275,12 +280,10 @@ impl Gatehouse for GatehouseSvc {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
 
-        // ask the datastore to process
-        self.send_ds_request(DsRequest::AddRole(req.clone(), tx), "add role")
-            .await?;
-
-        // Wait for the datastore to respond
-        match self.wait_for_response(rx).await? {
+        match self
+            .call_datastore(DsRequest::AddRole(req.clone(), tx), "add role", rx)
+            .await?
+        {
             DsResponse::SingleRole(role) => {
                 //TODO! -- add metrics
                 println!("Added role {}", role);
@@ -299,12 +302,10 @@ impl Gatehouse for GatehouseSvc {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
 
-        // ask the datastore to process
-        self.send_ds_request(DsRequest::RemoveRole(req.clone(), tx), "remove role")
-            .await?;
-
-        // Wait for the datastore to respond
-        match self.wait_for_response(rx).await? {
+        match self
+            .call_datastore(DsRequest::RemoveRole(req.clone(), tx), "remove role", rx)
+            .await?
+        {
             DsResponse::SingleRole(role) => {
                 //TODO! -- add metrics
                 println!("Removed role {}", role);
@@ -323,16 +324,104 @@ impl Gatehouse for GatehouseSvc {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
 
-        // ask the datastore to process
-        self.send_ds_request(DsRequest::GetRoles(req.clone(), tx), "get roles")
-            .await?;
-
-        // Wait for the datastore to respond
-        match self.wait_for_response(rx).await? {
+        match self
+            .call_datastore(DsRequest::GetRoles(req.clone(), tx), "get roles", rx)
+            .await?
+        {
             DsResponse::MultipleRoles(roles) => {
                 //TODO! -- add metrics
                 println!("Get {} roles", roles.len());
                 return Ok(Response::new(MultiRoleResponse { roles }));
+            }
+            DsResponse::Error(status) => return Err(status),
+            _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    //** GROUPS **//
+
+    /// Add a group
+    async fn add_group(
+        &self,
+        request: Request<AddGroupRequest>,
+    ) -> Result<Response<GroupResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        match self
+            .call_datastore(DsRequest::AddGroup(req.clone(), tx), "add group", rx)
+            .await?
+        {
+            DsResponse::SingleGroup(group) => {
+                //TODO! -- add metrics
+                println!("Added group {}", group);
+                return Ok(Response::new(GroupResponse { group: Some(group) }));
+            }
+            DsResponse::Error(status) => return Err(status),
+            _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /// Modify a group
+    async fn modify_group(
+        &self,
+        request: Request<ModifyGroupRequest>,
+    ) -> Result<Response<GroupResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        match self
+            .call_datastore(DsRequest::ModifyGroup(req.clone(), tx), "modify group", rx)
+            .await?
+        {
+            DsResponse::SingleGroup(group) => {
+                //TODO! -- add metrics
+                println!("Modified group {}", group);
+                return Ok(Response::new(GroupResponse { group: Some(group) }));
+            }
+            DsResponse::Error(status) => return Err(status),
+            _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /// Remove a group
+    async fn remove_group(
+        &self,
+        request: Request<RemoveGroupRequest>,
+    ) -> Result<Response<GroupResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        match self
+            .call_datastore(DsRequest::RemoveGroup(req.clone(), tx), "remove group", rx)
+            .await?
+        {
+            DsResponse::SingleGroup(group) => {
+                //TODO! -- add metrics
+                println!("Removed group {}", group);
+                return Ok(Response::new(GroupResponse { group: Some(group) }));
+            }
+            DsResponse::Error(status) => return Err(status),
+            _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /// Get groups (with optional filters)
+    async fn get_groups(
+        &self,
+        request: Request<GetAllGroupsRequest>,
+    ) -> Result<Response<MultiGroupResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        match self
+            .call_datastore(DsRequest::GetGroups(req.clone(), tx), "get groups", rx)
+            .await?
+        {
+            DsResponse::MultipleGroups(groups) => {
+                //TODO! -- add metrics
+                println!("Got {} groups", groups.len());
+                return Ok(Response::new(MultiGroupResponse { groups }));
             }
             DsResponse::Error(status) => return Err(status),
             _ => return Err(Status::internal("Got unexpected answer from datastore")),

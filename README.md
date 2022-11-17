@@ -71,7 +71,7 @@ Gatehouse then evaluates this request against the known policies for that `targe
 
 - [x] CRUD Target and Actions
 - [x] CRUD Entities
-- [ ] CRUD Groups and Group membership
+- [x] CRUD Groups and Group membership
 - [x] CRUD Roles
 - [ ] CRUD Policies
 - [ ] Policy engine
