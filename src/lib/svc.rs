@@ -39,16 +39,6 @@ impl GatehouseSvc {
 }
 
 impl GatehouseSvc {
-    /// Send a request to the datastore
-    async fn send_ds_request(&self, req: DsRequest, op: &str) -> Result<(), Status> {
-        if let Err(err) = self.dstx.send_async(req).await {
-            // TODO! -- add metrics
-            eprintln!("{} failed: {:?}", op, err);
-            return Err(Status::internal(err.to_string()));
-        }
-        Ok(())
-    }
-
     /// Wait for a response from the datastore
     async fn call_datastore(
         &self,

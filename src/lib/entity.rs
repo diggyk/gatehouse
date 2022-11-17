@@ -9,6 +9,7 @@ use std::fmt::Display;
 
 use crate::proto::common::AttributeValues;
 use crate::proto::entities::Entity;
+use crate::proto::groups::GroupMember;
 
 #[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 pub(crate) struct RegisteredEntity {
@@ -47,9 +48,9 @@ impl From<Entity> for RegisteredEntity {
 }
 
 impl From<RegisteredEntity> for Entity {
-    fn from(target: RegisteredEntity) -> Self {
+    fn from(entity: RegisteredEntity) -> Self {
         let mut attributes = HashMap::new();
-        for kv in target.attributes {
+        for kv in entity.attributes {
             attributes.insert(
                 kv.0,
                 AttributeValues {
@@ -59,9 +60,18 @@ impl From<RegisteredEntity> for Entity {
         }
 
         Self {
-            name: target.name,
-            typestr: target.typestr,
+            name: entity.name,
+            typestr: entity.typestr,
             attributes,
+        }
+    }
+}
+
+impl From<RegisteredEntity> for GroupMember {
+    fn from(entity: RegisteredEntity) -> Self {
+        Self {
+            name: entity.name,
+            typestr: entity.typestr,
         }
     }
 }

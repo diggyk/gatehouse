@@ -4,19 +4,19 @@ use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
-use crate::group::RegisteredGroup;
 use crate::proto::roles::Role;
 
 #[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 pub(crate) struct RegisteredRole {
     pub name: String,
-    pub groups: HashSet<RegisteredGroup>,
+    pub groups: HashSet<String>,
 }
 
 impl RegisteredRole {
     pub(crate) fn new(name: &str) -> Self {
+        let name = name.to_ascii_lowercase();
         Self {
-            name: name.to_string(),
+            name,
             groups: HashSet::new(),
         }
     }

@@ -7,10 +7,12 @@ use tokio::sync::oneshot::Sender;
 use tonic::Status;
 
 use crate::entity::RegisteredEntity;
+use crate::group::{RegisteredGroup, RegisteredGroupMember};
 use crate::msgs::{DsRequest, DsResponse};
 use crate::proto::entities::{
     AddEntityRequest, Entity, GetAllEntitiesRequest, ModifyEntityRequest, RemoveEntityRequest,
 };
+use crate::proto::groups::AddGroupRequest;
 use crate::proto::roles::{AddRoleRequest, GetAllRolesRequest, RemoveRoleRequest, Role};
 use crate::proto::targets::{
     AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
@@ -29,8 +31,11 @@ pub struct Datastore {
     /// HashMap from type string to HashMap of name to registered entity
     entities: HashMap<String, HashMap<String, RegisteredEntity>>,
 
-    /// HashSet of roles
-    roles: HashSet<RegisteredRole>,
+    /// HashMap of name to registered roles
+    roles: HashMap<String, RegisteredRole>,
+
+    /// HashMap of name to registered group
+    groups: HashMap<String, RegisteredGroup>,
 }
 
 impl Datastore {
@@ -53,12 +58,18 @@ impl Datastore {
             .await
             .expect("Could not load roles from backend");
 
+        let groups = backend
+            .load_groups()
+            .await
+            .expect("Could not load groups from backend");
+
         let mut ds = Datastore {
             rx,
             backend,
             targets,
             entities,
             roles,
+            groups,
         };
 
         tokio::spawn(async move {
@@ -87,7 +98,7 @@ impl Datastore {
                 DsRequest::RemoveRole(req, tx) => self.remove_role(req, tx).await,
                 DsRequest::GetRoles(req, tx) => self.get_roles(req, tx).await,
                 // GROUPS
-                DsRequest::AddGroup(req, tx) => todo!(),
+                DsRequest::AddGroup(req, tx) => self.add_group(req, tx).await,
                 DsRequest::ModifyGroup(req, tx) => todo!(),
                 DsRequest::RemoveGroup(req, tx) => todo!(),
                 DsRequest::GetGroups(req, tx) => todo!(),
@@ -464,7 +475,7 @@ impl Datastore {
         let new_role = RegisteredRole::new(&role);
 
         // if entity already exists, return an error
-        if self.roles.contains(&new_role) {
+        if self.roles.contains_key(&role) {
             println!("Role already exists: {}", role);
 
             // TODO! -- do something with error
@@ -477,7 +488,7 @@ impl Datastore {
         // try to persist the new role to the backend and if that succeeds, update it in memory
         match self.backend.save_role(&new_role).await {
             Ok(_) => {
-                let _ = self.roles.insert(new_role.clone());
+                let _ = self.roles.insert(role.clone(), new_role.clone());
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -493,9 +504,7 @@ impl Datastore {
     async fn remove_role(&mut self, req: RemoveRoleRequest, tx: Sender<DsResponse>) {
         let role = req.name.to_ascii_lowercase();
 
-        let lookup_role = RegisteredRole::new(&role);
-
-        if !self.roles.contains(&lookup_role) {
+        if !self.roles.contains_key(&role) {
             println!("Role does not exists: {}", role);
 
             // TODO! -- do something with error
@@ -503,10 +512,12 @@ impl Datastore {
             return;
         }
 
+        let existing_role = self.roles.get(&role).unwrap();
+
         // try to remove the new role to the backend and if that succeeds, update it in memory
-        match self.backend.remove_role(&lookup_role).await {
+        match self.backend.remove_role(existing_role).await {
             Ok(_) => {
-                let _ = self.roles.remove(&lookup_role);
+                let _ = self.roles.remove(&role);
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -523,10 +534,60 @@ impl Datastore {
         let mut roles = Vec::new();
 
         if req.name.is_none() {
-            roles = self.roles.iter().map(|r| r.clone().into()).collect();
-        } else if let Some(role) = self.roles.get(&RegisteredRole::new(&req.name.unwrap())) {
+            roles = self.roles.iter().map(|r| r.1.clone().into()).collect();
+        } else if let Some(role) = self.roles.get(&req.name.unwrap()) {
             roles = vec![role.clone().into()];
         }
         let _ = tx.send(DsResponse::MultipleRoles(roles));
+    }
+
+    /// Add group. We cross reference role membership in the registered roles but not in entities
+    /// because it is perfectly legal to have members of groups that will be expressed externally
+    async fn add_group(&mut self, req: AddGroupRequest, tx: Sender<DsResponse>) {
+        let name = req.name.to_ascii_lowercase();
+
+        let members: HashSet<RegisteredGroupMember> =
+            req.members.iter().map(|m| m.clone().into()).collect();
+
+        let mut roles = HashSet::new();
+
+        let mut found_roles = Vec::new();
+        for role_req in req.roles {
+            let role_req_name = role_req.name.to_ascii_lowercase();
+            let found_role = self.roles.get(&role_req_name);
+            if found_role.is_none() {
+                let _ = tx.send(DsResponse::Error(Status::not_found(format!(
+                    "Role {} not found",
+                    &role_req.name
+                ))));
+                return;
+            }
+
+            // make a clone of the role and add a reference to this group
+            let mut cloned_role = found_role.unwrap().clone();
+            cloned_role.groups.insert(name.clone().clone());
+            found_roles.push(cloned_role);
+
+            // add this role to the list of roles associated with this group
+            roles.insert(role_req_name);
+        }
+
+        let new_group = RegisteredGroup::new(&name, members, roles);
+
+        // try to safe the group first and then if that works, update the roles and persist them
+        if let Err(err) = self.backend.save_group(&new_group).await {
+            // TODO! -- do something with error
+            let _ = tx.send(DsResponse::Error(Status::internal(err)));
+        }
+
+        self.groups.insert(name.clone(), new_group);
+
+        for cloned_role in found_roles {
+            // if this fails, we have a referential integrity problem
+            if let Err(err) = self.backend.save_role(&cloned_role).await {
+                // TODO! -- really alert on this error
+                eprintln!("Referential integrity issue: role {} could not be saved after adding to group {}: {}", cloned_role.name, &name, err);
+            }
+        }
     }
 }

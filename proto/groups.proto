@@ -1,8 +1,18 @@
 syntax = "proto3";
 package groups;
 
-import "entities.proto";
 import "roles.proto";
+
+/** Describes a group member, which may or may not be a registered entity */
+message GroupMember {
+    // the identity of the entity (case insensitive)
+    // ex: "johndoe@email.com"
+    string name = 1;
+
+    // type string (case insensitive)
+    // ex: "email"
+    string typestr = 2;
+}
 
 /** Describes a group */
 message Group {
@@ -10,7 +20,7 @@ message Group {
     string name = 1;
 
     // group members
-    repeated entities.Entity members = 2;
+    repeated GroupMember members = 2;
 
     // roles granted group members
     repeated roles.Role roles = 3;
@@ -22,7 +32,7 @@ message AddGroupRequest {
     string name = 1;
 
     // group members
-    repeated entities.Entity members = 2;
+    repeated GroupMember members = 2;
 
     // roles granted group members
     repeated roles.Role roles = 3;
@@ -34,10 +44,10 @@ message ModifyGroupRequest {
     string name = 1;
 
     // group members to add
-    repeated entities.Entity add_members = 2;
+    repeated GroupMember add_members = 2;
 
     // group members to remove
-    repeated entities.Entity remove_members = 3;
+    repeated GroupMember remove_members = 3;
 
     // roles to be granted to group members
     repeated roles.Role add_roles = 4;
@@ -58,7 +68,7 @@ message GetAllGroupsRequest {
     optional string name = 1;
 
     // filter by groups with a member
-    optional entities.Entity member = 2;
+    optional GroupMember member = 2;
 
     // filter groups by role
     optional roles.Role role = 3;
