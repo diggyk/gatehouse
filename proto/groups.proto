@@ -1,0 +1,77 @@
+syntax = "proto3";
+package groups;
+
+import "entities.proto";
+import "roles.proto";
+
+/** Describes a group */
+message Group {
+    // group name
+    string name = 1;
+
+    // group members
+    repeated entities.Entity members = 2;
+
+    // roles granted group members
+    repeated roles.Role roles = 3;
+}
+
+/** Request to add a group */
+message AddGroupRequest {
+    // name of the group
+    string name = 1;
+
+    // group members
+    repeated entities.Entity members = 2;
+
+    // roles granted group members
+    repeated roles.Role roles = 3;
+}
+
+/** Request to modify a group */
+message ModifyGroupRequest {
+    // name of the group to modify
+    string name = 1;
+
+    // group members to add
+    repeated entities.Entity add_members = 2;
+
+    // group members to remove
+    repeated entities.Entity remove_members = 3;
+
+    // roles to be granted to group members
+    repeated roles.Role add_roles = 4;
+
+    // roles to be revoked from group members
+    repeated roles.Role remove_roles = 5;
+}
+
+/** Delete group request */
+message RemoveGroupRequest {
+    // name of group to remove
+    string name = 1;
+}
+
+/** Get all groups or optionally filter */
+message GetAllGroupsRequest {
+    // filter by name
+    optional string name = 1;
+
+    // filter by groups with a member
+    optional entities.Entity member = 2;
+
+    // filter groups by role
+    optional roles.Role role = 3;
+}
+
+/** Single group response */
+message GroupResponse {
+    // the group
+    Group group = 1;
+}
+
+/** Multi group response */
+message MultiGroupResponse {
+    // the groups
+    repeated Group groups = 1;
+}

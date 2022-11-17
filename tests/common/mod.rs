@@ -242,7 +242,12 @@ pub async fn get_roles(client: &mut GatehouseClient<Channel>, name: Option<&str>
 
 #[async_recursion]
 async fn clear_dir(path: &str) {
-    let mut dir = read_dir(path).await.expect("Could not read tmp dir");
+    let dir = read_dir(path).await;
+    if dir.is_err() {
+        // doesn't exist maybe so let's move on
+        return;
+    }
+    let mut dir = dir.unwrap();
 
     while let Some(entry) = dir
         .next_entry()

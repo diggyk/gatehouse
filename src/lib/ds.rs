@@ -15,6 +15,7 @@ use crate::proto::roles::{AddRoleRequest, GetAllRolesRequest, RemoveRoleRequest,
 use crate::proto::targets::{
     AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
 };
+use crate::role::RegisteredRole;
 use crate::storage::file::FileStorage;
 use crate::target::RegisteredTarget;
 
@@ -29,7 +30,7 @@ pub struct Datastore {
     entities: HashMap<String, HashMap<String, RegisteredEntity>>,
 
     /// HashSet of roles
-    roles: HashSet<String>,
+    roles: HashSet<RegisteredRole>,
 }
 
 impl Datastore {
@@ -85,6 +86,11 @@ impl Datastore {
                 DsRequest::AddRole(req, tx) => self.add_role(req, tx).await,
                 DsRequest::RemoveRole(req, tx) => self.remove_role(req, tx).await,
                 DsRequest::GetRoles(req, tx) => self.get_roles(req, tx).await,
+                // GROUPS
+                DsRequest::AddGroup(req, tx) => todo!(),
+                DsRequest::ModifyGroup(req, tx) => todo!(),
+                DsRequest::RemoveGroup(req, tx) => todo!(),
+                DsRequest::GetGroups(req, tx) => todo!(),
             }
         }
     }
@@ -120,7 +126,7 @@ impl Datastore {
 
         let new_target = RegisteredTarget::new(&name, &typestr, req.actions, attributes);
 
-        match self.backend.save_target(new_target.clone()).await {
+        match self.backend.save_target(&new_target).await {
             Ok(_) => {
                 typed_targets.insert(name, new_target.clone());
             }
@@ -191,7 +197,7 @@ impl Datastore {
             }
         }
 
-        match self.backend.save_target(updated_target.clone()).await {
+        match self.backend.save_target(&updated_target).await {
             Ok(_) => {
                 let _ = typed_targets.insert(name.clone(), updated_target.clone());
             }
@@ -234,7 +240,7 @@ impl Datastore {
         let existing_target = typed_targets.get(&name).unwrap().clone();
 
         // try to persist the new target to the backend and if that succeeds, update it in memory
-        match self.backend.remove_target(existing_target.clone()).await {
+        match self.backend.remove_target(&existing_target).await {
             Ok(_) => {
                 let _ = typed_targets.remove(&name);
             }
@@ -305,7 +311,7 @@ impl Datastore {
 
         let new_entity = RegisteredEntity::new(&name, &typestr, attributes);
 
-        match self.backend.save_entity(new_entity.clone()).await {
+        match self.backend.save_entity(&new_entity).await {
             Ok(_) => {
                 typed_entities.insert(name, new_entity.clone());
             }
@@ -368,7 +374,7 @@ impl Datastore {
             }
         }
 
-        match self.backend.save_entity(updated_entity.clone()).await {
+        match self.backend.save_entity(&updated_entity).await {
             Ok(_) => {
                 let _ = typed_entities.insert(name.clone(), updated_entity.clone());
             }
@@ -411,7 +417,7 @@ impl Datastore {
         let existing_entity = typed_entities.get(&name).unwrap().clone();
 
         // try to persist the new target to the backend and if that succeeds, update it in memory
-        match self.backend.remove_entity(existing_entity.clone()).await {
+        match self.backend.remove_entity(&existing_entity).await {
             Ok(_) => {
                 let _ = typed_entities.remove(&name);
             }
@@ -455,7 +461,10 @@ impl Datastore {
     async fn add_role(&mut self, req: AddRoleRequest, tx: Sender<DsResponse>) {
         let role = req.name.to_ascii_lowercase();
 
-        if self.roles.contains(&role) {
+        let new_role = RegisteredRole::new(&role);
+
+        // if entity already exists, return an error
+        if self.roles.contains(&new_role) {
             println!("Role already exists: {}", role);
 
             // TODO! -- do something with error
@@ -466,9 +475,9 @@ impl Datastore {
         }
 
         // try to persist the new role to the backend and if that succeeds, update it in memory
-        match self.backend.save_role(&role).await {
+        match self.backend.save_role(&new_role).await {
             Ok(_) => {
-                let _ = self.roles.insert(role.clone());
+                let _ = self.roles.insert(new_role.clone());
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -484,7 +493,9 @@ impl Datastore {
     async fn remove_role(&mut self, req: RemoveRoleRequest, tx: Sender<DsResponse>) {
         let role = req.name.to_ascii_lowercase();
 
-        if !self.roles.contains(&role) {
+        let lookup_role = RegisteredRole::new(&role);
+
+        if !self.roles.contains(&lookup_role) {
             println!("Role does not exists: {}", role);
 
             // TODO! -- do something with error
@@ -493,9 +504,9 @@ impl Datastore {
         }
 
         // try to remove the new role to the backend and if that succeeds, update it in memory
-        match self.backend.remove_role(&role).await {
+        match self.backend.remove_role(&lookup_role).await {
             Ok(_) => {
-                let _ = self.roles.remove(&role);
+                let _ = self.roles.remove(&lookup_role);
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -512,13 +523,9 @@ impl Datastore {
         let mut roles = Vec::new();
 
         if req.name.is_none() {
-            roles = self
-                .roles
-                .iter()
-                .map(|r| Role { name: r.clone() })
-                .collect();
-        } else if let Some(role) = self.roles.get(&req.name.unwrap()) {
-            roles = vec![Role { name: role.clone() }];
+            roles = self.roles.iter().map(|r| r.clone().into()).collect();
+        } else if let Some(role) = self.roles.get(&RegisteredRole::new(&req.name.unwrap())) {
+            roles = vec![role.clone().into()];
         }
         let _ = tx.send(DsResponse::MultipleRoles(roles));
     }

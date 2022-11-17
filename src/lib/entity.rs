@@ -2,19 +2,33 @@
 
 //! The Entity type and methods
 
+use core::hash::Hash;
 use serde::{Deserialize, Serialize};
-
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 
 use crate::proto::common::AttributeValues;
 use crate::proto::entities::Entity;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 pub(crate) struct RegisteredEntity {
     pub name: String,
     pub typestr: String,
     pub attributes: HashMap<String, HashSet<String>>,
+}
+
+/// Two registered entities are equivalent if the name and typestr are identical
+impl PartialEq for RegisteredEntity {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.typestr == other.typestr
+    }
+}
+
+impl Hash for RegisteredEntity {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.typestr.hash(state);
+    }
 }
 
 impl From<Entity> for RegisteredEntity {
