@@ -12,7 +12,9 @@ use crate::msgs::{DsRequest, DsResponse};
 use crate::proto::entities::{
     AddEntityRequest, Entity, GetAllEntitiesRequest, ModifyEntityRequest, RemoveEntityRequest,
 };
-use crate::proto::groups::AddGroupRequest;
+use crate::proto::groups::{
+    AddGroupRequest, GetAllGroupsRequest, ModifyGroupRequest, RemoveGroupRequest,
+};
 use crate::proto::roles::{AddRoleRequest, GetAllRolesRequest, RemoveRoleRequest, Role};
 use crate::proto::targets::{
     AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
@@ -99,9 +101,9 @@ impl Datastore {
                 DsRequest::GetRoles(req, tx) => self.get_roles(req, tx).await,
                 // GROUPS
                 DsRequest::AddGroup(req, tx) => self.add_group(req, tx).await,
-                DsRequest::ModifyGroup(req, tx) => todo!(),
-                DsRequest::RemoveGroup(req, tx) => todo!(),
-                DsRequest::GetGroups(req, tx) => todo!(),
+                DsRequest::ModifyGroup(req, tx) => self.modify_group(req, tx).await,
+                DsRequest::RemoveGroup(req, tx) => self.remove_group(req, tx).await,
+                DsRequest::GetGroups(req, tx) => self.get_groups(req, tx).await,
             }
         }
     }
@@ -497,7 +499,7 @@ impl Datastore {
             }
         }
 
-        let _ = tx.send(DsResponse::SingleRole(Role { name: role }));
+        let _ = tx.send(DsResponse::SingleRole(new_role.into()));
     }
 
     /// Remove a role
@@ -512,10 +514,19 @@ impl Datastore {
             return;
         }
 
-        let existing_role = self.roles.get(&role).unwrap();
+        let existing_role = self.roles.get(&role).unwrap().to_owned();
+
+        let mut updated_groups = Vec::new();
+        for group_name in &existing_role.groups {
+            if let Some(grp) = self.groups.get(group_name) {
+                let mut cloned_grp = grp.clone();
+                cloned_grp.roles.remove(&role);
+                updated_groups.push(cloned_grp);
+            }
+        }
 
         // try to remove the new role to the backend and if that succeeds, update it in memory
-        match self.backend.remove_role(existing_role).await {
+        match self.backend.remove_role(&existing_role).await {
             Ok(_) => {
                 let _ = self.roles.remove(&role);
             }
@@ -526,17 +537,35 @@ impl Datastore {
             }
         }
 
-        let _ = tx.send(DsResponse::SingleRole(Role { name: role }));
+        // persist the updated groups
+        for updated_group in updated_groups {
+            if let Err(err) = self.backend.save_group(&updated_group).await {
+                // TODO! -- do something with error
+                eprintln!(
+                    "Persistence issue! Group {} could not be saved after remove role {}: {}",
+                    updated_group.name, &role, err
+                );
+            }
+
+            self.groups
+                .insert(updated_group.name.clone(), updated_group);
+        }
+
+        let _ = tx.send(DsResponse::SingleRole(existing_role.into()));
     }
 
     /// Get all roles
     async fn get_roles(&mut self, req: GetAllRolesRequest, tx: Sender<DsResponse>) {
-        let mut roles = Vec::new();
+        let mut roles: Vec<Role> = Vec::new();
 
         if req.name.is_none() {
-            roles = self.roles.iter().map(|r| r.1.clone().into()).collect();
+            roles = self
+                .roles
+                .iter()
+                .map(|(_, r)| r.to_owned().into())
+                .collect();
         } else if let Some(role) = self.roles.get(&req.name.unwrap()) {
-            roles = vec![role.clone().into()];
+            roles = vec![role.to_owned().into()];
         }
         let _ = tx.send(DsResponse::MultipleRoles(roles));
     }
@@ -551,14 +580,15 @@ impl Datastore {
 
         let mut roles = HashSet::new();
 
+        // find the existing roles we can update their references to groups
         let mut found_roles = Vec::new();
         for role_req in req.roles {
-            let role_req_name = role_req.name.to_ascii_lowercase();
+            let role_req_name = role_req.to_ascii_lowercase();
             let found_role = self.roles.get(&role_req_name);
             if found_role.is_none() {
                 let _ = tx.send(DsResponse::Error(Status::not_found(format!(
                     "Role {} not found",
-                    &role_req.name
+                    &role_req
                 ))));
                 return;
             }
@@ -574,20 +604,198 @@ impl Datastore {
 
         let new_group = RegisteredGroup::new(&name, members, roles);
 
-        // try to safe the group first and then if that works, update the roles and persist them
+        // try to save the group first and then if that works, update the roles and persist them
         if let Err(err) = self.backend.save_group(&new_group).await {
             // TODO! -- do something with error
             let _ = tx.send(DsResponse::Error(Status::internal(err)));
+            return;
         }
 
-        self.groups.insert(name.clone(), new_group);
+        self.groups.insert(name.clone(), new_group.clone());
 
-        for cloned_role in found_roles {
+        for found_role in found_roles {
             // if this fails, we have a referential integrity problem
-            if let Err(err) = self.backend.save_role(&cloned_role).await {
+            if let Err(err) = self.backend.save_role(&found_role).await {
                 // TODO! -- really alert on this error
-                eprintln!("Referential integrity issue: role {} could not be saved after adding to group {}: {}", cloned_role.name, &name, err);
+                eprintln!("Referential integrity issue: role {} could not be saved after adding to group {}: {}", found_role.name, &name, err);
             }
+            self.roles.insert(found_role.name.clone(), found_role);
         }
+
+        let _ = tx.send(DsResponse::SingleGroup(new_group.into()));
+    }
+
+    /// Modify a group
+    async fn modify_group(&mut self, req: ModifyGroupRequest, tx: Sender<DsResponse>) {
+        let name = req.name.to_ascii_lowercase();
+
+        if !self.groups.contains_key(&name) {
+            println!("Group does not exists: {}", name);
+
+            // TODO! -- do something with error
+            let _ = tx.send(DsResponse::Error(Status::not_found("Group not found")));
+            return;
+        }
+
+        let mut updated_group = self.groups.get(&name).unwrap().clone();
+
+        // add new members
+        for member in req.add_members {
+            updated_group.members.insert(member.into());
+        }
+
+        // remove members
+        for member in req.remove_members {
+            updated_group.members.remove(&member.into());
+        }
+
+        // find existing roles that are being added to this group
+        let mut found_roles = Vec::new();
+        for role_req in req.add_roles {
+            let role_req_name = role_req.to_ascii_lowercase();
+            let found_role = self.roles.get(&role_req_name);
+            if found_role.is_none() {
+                let _ = tx.send(DsResponse::Error(Status::not_found(format!(
+                    "Role {} not found",
+                    &role_req
+                ))));
+                return;
+            }
+
+            // make a clone of the role and add a reference to this group
+            let mut cloned_role = found_role.unwrap().clone();
+            cloned_role.groups.insert(name.clone());
+            found_roles.push(cloned_role);
+
+            // add this role to the list of roles associated with this group
+            updated_group.roles.insert(role_req_name);
+        }
+
+        // find existing roles that are being removed from this group
+        for role_req in req.remove_roles {
+            let role_req_name = role_req.to_ascii_lowercase();
+            let found_role = self.roles.get(&role_req_name);
+            if found_role.is_none() {
+                let _ = tx.send(DsResponse::Error(Status::not_found(format!(
+                    "Role {} not found",
+                    &role_req
+                ))));
+                return;
+            }
+
+            // make a clone of the role and remove the reference to this group
+            let mut cloned_role = found_role.unwrap().clone();
+            cloned_role.groups.remove(&name.clone());
+            found_roles.push(cloned_role);
+
+            // remove this role to the list of roles associated with this group
+            updated_group.roles.remove(&role_req_name);
+        }
+
+        // try to save the group first and then if that works, update the roles and persist them
+        if let Err(err) = self.backend.save_group(&updated_group).await {
+            // TODO! -- do something with error
+            let _ = tx.send(DsResponse::Error(Status::internal(err)));
+            return;
+        }
+
+        self.groups.insert(name.clone(), updated_group.clone());
+
+        for found_role in found_roles {
+            // if this fails, we have a referential integrity problem
+            if let Err(err) = self.backend.save_role(&found_role).await {
+                // TODO! -- really alert on this error
+                eprintln!("Referential integrity issue: role {} could not be saved after adding to group {}: {}", found_role.name, &name, err);
+            }
+            self.roles.insert(found_role.name.clone(), found_role);
+        }
+
+        let _ = tx.send(DsResponse::SingleGroup(updated_group.into()));
+    }
+
+    /// Remove an existing group
+    async fn remove_group(&mut self, req: RemoveGroupRequest, tx: Sender<DsResponse>) {
+        let name = req.name.to_ascii_lowercase();
+
+        if !self.groups.contains_key(&name) {
+            println!("Group does not exists: {}", name);
+
+            // TODO! -- do something with error
+            let _ = tx.send(DsResponse::Error(Status::not_found("Group not found")));
+            return;
+        }
+
+        let existing_group = self.groups.get(&name).unwrap().clone();
+
+        // find existing roles that have been granted to this group
+        let mut found_roles = Vec::new();
+        // find existing roles that are being removed from this group
+        for role_name in existing_group.roles.iter() {
+            let found_role = self.roles.get(role_name);
+            if found_role.is_none() {
+                // unexpected but not the end of the world
+                eprintln!(
+                    "When removing group {}, the role {} didn't actually exist",
+                    name, role_name
+                );
+            }
+
+            // make a clone of the role and remove the reference to this group
+            let mut cloned_role = found_role.unwrap().clone();
+            cloned_role.groups.remove(&name.clone());
+            found_roles.push(cloned_role);
+        }
+
+        // try to delete the group first and then if that works, update the roles and persist them
+        if let Err(err) = self.backend.remove_group(&existing_group).await {
+            // TODO! -- do something with error
+            let _ = tx.send(DsResponse::Error(Status::internal(err)));
+            return;
+        }
+
+        for found_role in found_roles {
+            // if this fails, we have a referential integrity problem
+            if let Err(err) = self.backend.save_role(&found_role).await {
+                // TODO! -- really alert on this error
+                eprintln!("Referential integrity issue: role {} could not be saved after adding to group {}: {}", found_role.name, &name, err);
+            }
+            self.roles.insert(found_role.name.clone(), found_role);
+        }
+
+        let _ = tx.send(DsResponse::SingleGroup(existing_group.into()));
+    }
+
+    /// Get groups based on filter
+    async fn get_groups(&mut self, req: GetAllGroupsRequest, tx: Sender<DsResponse>) {
+        let name_filter = req.name;
+        let member_filter = req.member;
+        let role_filter = req.role;
+
+        let mut found_groups = Vec::new();
+
+        for (name, group) in self.groups.iter() {
+            if let Some(ref filter) = name_filter {
+                if filter != name {
+                    continue;
+                }
+            }
+
+            if let Some(ref filter) = member_filter {
+                let filter: RegisteredGroupMember = RegisteredGroupMember::from(filter.clone());
+                if !group.members.contains(&filter) {
+                    continue;
+                }
+            }
+
+            if let Some(ref filter) = role_filter {
+                if !group.roles.contains(filter) {
+                    continue;
+                }
+            }
+
+            found_groups.push(group.clone().into());
+        }
+
+        let _ = tx.send(DsResponse::MultipleGroups(found_groups));
     }
 }

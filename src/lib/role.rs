@@ -40,17 +40,11 @@ impl Display for RegisteredRole {
     }
 }
 
-impl From<Role> for RegisteredRole {
-    fn from(role: Role) -> Self {
-        Self {
-            name: role.name,
-            groups: HashSet::new(),
-        }
-    }
-}
-
 impl From<RegisteredRole> for Role {
     fn from(role: RegisteredRole) -> Self {
-        Self { name: role.name }
+        Self {
+            name: role.name,
+            granted_to: role.groups.into_iter().collect(),
+        }
     }
 }

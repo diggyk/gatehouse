@@ -8,8 +8,9 @@ use tokio::test;
 use gatehouse::proto::base::gatehouse_client::GatehouseClient;
 
 use crate::common::{
-    add_entity, add_role, add_target, get_entities, get_targets, modify_entity, modify_target,
-    remove_entity, remove_role, remove_target, str,
+    add_entity, add_group, add_role, add_target, get_entities, get_groups, get_targets,
+    modify_entity, modify_group, modify_target, remove_entity, remove_group, remove_role,
+    remove_target, str,
 };
 
 #[test]
@@ -20,6 +21,7 @@ async fn test_crud() {
     test_targets().await;
     test_entities().await;
     test_roles().await;
+    test_groups().await;
 }
 
 async fn test_targets() {
@@ -325,6 +327,7 @@ async fn test_roles() {
 
     let role1 = add_role(&mut client, "power-admin").await;
     assert_eq!(role1.name, "power-admin");
+    assert_eq!(role1.granted_to.len(), 0);
 
     let _ = add_role(&mut client, "launch-guard").await;
     let _ = add_role(&mut client, "auditer").await;
@@ -337,4 +340,96 @@ async fn test_roles() {
 
     let roles = get_roles(&mut client, None).await;
     assert_eq!(roles.len(), 2, "expected 2 roles");
+}
+
+async fn test_groups() {
+    let mut client = GatehouseClient::connect("http://localhost:6174")
+        .await
+        .expect("could not create client");
+
+    let role1 = add_role(&mut client, "admin").await;
+    let role2 = add_role(&mut client, "user").await;
+    let role3 = add_role(&mut client, "guest").await;
+    let role4 = add_role(&mut client, "manager").await;
+    assert_eq!(role1.name, "admin");
+    assert_eq!(role2.name, "user");
+    assert_eq!(role3.name, "guest");
+    assert_eq!(role4.name, "manager");
+
+    let grp1 = add_group(
+        &mut client,
+        "administrators",
+        vec![("sandytest", "authuser"), ("donnyman", "authuser")],
+        vec!["admin", "user"],
+    )
+    .await;
+
+    assert_eq!(grp1.name, "administrators");
+    assert_eq!(grp1.members.len(), 2);
+    assert_eq!(grp1.roles.len(), 2);
+
+    let role1 = get_roles(&mut client, Some("admin")).await;
+    assert_eq!(role1[0].name, "admin");
+    assert_eq!(role1[0].granted_to.len(), 1);
+    assert_eq!(role1[0].granted_to[0], "administrators");
+    let role2 = get_roles(&mut client, Some("user")).await;
+    assert_eq!(role2[0].name, "user");
+    assert_eq!(role2[0].granted_to.len(), 1);
+    assert_eq!(role2[0].granted_to[0], "administrators");
+
+    let grp1 = modify_group(
+        &mut client,
+        "administrators",
+        vec![("testman", "authuser"), ("testdog", "authuser")],
+        vec!["manager", "guest"],
+        vec![("sandytest", "authuser")],
+        vec!["admin"],
+    )
+    .await;
+
+    let grp2 = add_group(
+        &mut client,
+        "customers",
+        vec![("coke", "authuser"), ("pepsi", "authuser")],
+        vec!["user", "manager"],
+    )
+    .await;
+
+    assert_eq!(grp1.name, "administrators");
+    assert_eq!(grp1.members.len(), 3);
+    assert_eq!(grp1.roles.len(), 3);
+
+    assert_eq!(grp2.name, "customers");
+    assert_eq!(grp2.members.len(), 2);
+    assert_eq!(grp2.roles.len(), 2);
+
+    let role1 = get_roles(&mut client, Some("admin")).await;
+    assert_eq!(role1[0].name, "admin");
+    assert_eq!(role1[0].granted_to.len(), 0);
+    let role2 = get_roles(&mut client, Some("user")).await;
+    assert_eq!(role2[0].name, "user");
+    assert_eq!(role2[0].granted_to.len(), 2);
+
+    let grp1 = remove_group(&mut client, "administrators").await;
+    assert_eq!(grp1.name, "administrators");
+    let role1 = get_roles(&mut client, Some("admin")).await;
+    assert_eq!(role1[0].name, "admin");
+    assert_eq!(role1[0].granted_to.len(), 0);
+    let role2 = get_roles(&mut client, Some("user")).await;
+    assert_eq!(role2[0].name, "user");
+    assert_eq!(role2[0].granted_to.len(), 1);
+
+    // we will next remove a role and make sure it gets removed from the group
+    let grp2 = get_groups(&mut client, Some("customers"), None, None).await;
+    assert_eq!(grp2[0].name, "customers");
+    assert_eq!(grp2[0].roles.len(), 2);
+    assert!(grp2[0].roles.iter().any(|r| r == "user"));
+
+    let role2 = remove_role(&mut client, "user").await;
+    assert_eq!(role2.name, "user");
+
+    let grp2 = get_groups(&mut client, Some("customers"), None, None).await;
+    assert_eq!(grp2[0].name, "customers");
+    assert_eq!(grp2[0].roles.len(), 1);
+    assert!(!grp2[0].roles.iter().any(|r| r == "user"));
 }

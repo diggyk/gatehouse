@@ -9,7 +9,6 @@ use std::fmt::Display;
 use serde::{Deserialize, Serialize};
 
 use crate::proto::groups::{Group, GroupMember};
-use crate::proto::roles::Role;
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub(crate) struct RegisteredGroupMember {
@@ -86,7 +85,7 @@ impl From<RegisteredGroup> for Group {
         Self {
             name: g.name,
             members: g.members.iter().map(|m| m.clone().into()).collect(),
-            roles: g.roles.iter().map(|r| Role { name: r.clone() }).collect(),
+            roles: g.roles.into_iter().collect(),
         }
     }
 }
