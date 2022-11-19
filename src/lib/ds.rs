@@ -3,17 +3,22 @@
 //! The datastore holds all the policies, targets, and internal PIP data
 
 use std::collections::{HashMap, HashSet};
+use std::ops::Deref;
 use tokio::sync::oneshot::Sender;
 use tonic::Status;
 
 use crate::entity::RegisteredEntity;
 use crate::group::{RegisteredGroup, RegisteredGroupMember};
 use crate::msgs::{DsRequest, DsResponse};
+use crate::policy::{EntityCheck, RegisteredPolicyRule};
 use crate::proto::entities::{
     AddEntityRequest, Entity, GetAllEntitiesRequest, ModifyEntityRequest, RemoveEntityRequest,
 };
 use crate::proto::groups::{
     AddGroupRequest, GetAllGroupsRequest, ModifyGroupRequest, RemoveGroupRequest,
+};
+use crate::proto::policies::{
+    AddPolicyRequest, GetPoliciesRequest, ModifyPolicyRequest, PolicyRule, RemovePolicyRequest,
 };
 use crate::proto::roles::{AddRoleRequest, GetAllRolesRequest, RemoveRoleRequest, Role};
 use crate::proto::targets::{
@@ -38,6 +43,9 @@ pub struct Datastore {
 
     /// HashMap of name to registered group
     groups: HashMap<String, RegisteredGroup>,
+
+    /// HashMap of name to registered policy
+    policies: HashMap<String, RegisteredPolicyRule>,
 }
 
 impl Datastore {
@@ -65,6 +73,11 @@ impl Datastore {
             .await
             .expect("Could not load groups from backend");
 
+        let policies = backend
+            .load_policies()
+            .await
+            .expect("Could not load policies from backend");
+
         let mut ds = Datastore {
             rx,
             backend,
@@ -72,6 +85,7 @@ impl Datastore {
             entities,
             roles,
             groups,
+            policies,
         };
 
         tokio::spawn(async move {
@@ -104,8 +118,15 @@ impl Datastore {
                 DsRequest::ModifyGroup(req, tx) => self.modify_group(req, tx).await,
                 DsRequest::RemoveGroup(req, tx) => self.remove_group(req, tx).await,
                 DsRequest::GetGroups(req, tx) => self.get_groups(req, tx).await,
+                // POLICIES
+                DsRequest::AddPolicy(req, tx) => self.add_policy(req, tx).await,
+                DsRequest::ModifyPolicy(req, tx) => self.modify_policy(req, tx).await,
+                DsRequest::RemovePolicy(req, tx) => self.remove_policy(req, tx).await,
+                DsRequest::GetPolicies(req, tx) => self.get_policies(req, tx).await,
             }
         }
+
+        println!("Datastore shutdown");
     }
 
     /// Add a new target
@@ -526,7 +547,7 @@ impl Datastore {
         }
 
         // try to remove the new role to the backend and if that succeeds, update it in memory
-        match self.backend.remove_role(&existing_role).await {
+        match self.backend.remove_role(&existing_role.name).await {
             Ok(_) => {
                 let _ = self.roles.remove(&role);
             }
@@ -574,6 +595,17 @@ impl Datastore {
     /// because it is perfectly legal to have members of groups that will be expressed externally
     async fn add_group(&mut self, req: AddGroupRequest, tx: Sender<DsResponse>) {
         let name = req.name.to_ascii_lowercase();
+
+        // if entity already exists, return an error
+        if self.groups.contains_key(&name) {
+            println!("Group already exists: {}", name);
+
+            // TODO! -- do something with error
+            let _ = tx.send(DsResponse::Error(Status::already_exists(
+                "Role already exists",
+            )));
+            return;
+        }
 
         let members: HashSet<RegisteredGroupMember> =
             req.members.iter().map(|m| m.clone().into()).collect();
@@ -747,7 +779,7 @@ impl Datastore {
         }
 
         // try to delete the group first and then if that works, update the roles and persist them
-        if let Err(err) = self.backend.remove_group(&existing_group).await {
+        if let Err(err) = self.backend.remove_group(&existing_group.name).await {
             // TODO! -- do something with error
             let _ = tx.send(DsResponse::Error(Status::internal(err)));
             return;
@@ -797,5 +829,167 @@ impl Datastore {
         }
 
         let _ = tx.send(DsResponse::MultipleGroups(found_groups));
+    }
+
+    /// Add a policy if new
+    async fn add_policy(&mut self, req: AddPolicyRequest, tx: Sender<DsResponse>) {
+        let rule = match req.rule {
+            None => {
+                let _ = tx.send(DsResponse::Error(Status::invalid_argument(
+                    "No rule in request",
+                )));
+                return;
+            }
+            Some(rule) => rule,
+        };
+
+        let name = rule.name.to_ascii_lowercase();
+
+        // if policy rule already exists, return an error
+        if self.roles.contains_key(&name) {
+            println!("Policy rule already exists: {}", name);
+
+            // TODO! -- do something with error
+            let _ = tx.send(DsResponse::Error(Status::already_exists(
+                "Policy rule already exists",
+            )));
+            return;
+        }
+
+        let new_policy: RegisteredPolicyRule = rule.clone().into();
+
+        // try to persist the new policy to the backend and if that succeeds, update it in memory
+        match self.backend.save_policy(&new_policy).await {
+            Ok(_) => {
+                let _ = self.policies.insert(name.clone(), new_policy.clone());
+            }
+            Err(err) => {
+                // TODO! -- do something with error
+                let _ = tx.send(DsResponse::Error(Status::internal(err)));
+                return;
+            }
+        }
+
+        let _ = tx.send(DsResponse::SinglePolicy(new_policy.into()));
+    }
+
+    /// Update an existing policy
+    async fn modify_policy(&mut self, req: ModifyPolicyRequest, tx: Sender<DsResponse>) {
+        let rule = match req.rule {
+            None => {
+                let _ = tx.send(DsResponse::Error(Status::invalid_argument(
+                    "No rule in request",
+                )));
+                return;
+            }
+            Some(rule) => rule,
+        };
+
+        let name = rule.name.to_ascii_lowercase();
+
+        // if policy rule does not exist, return an error
+        if !self.roles.contains_key(&name) {
+            println!("Policy rule not found: {}", name);
+
+            // TODO! -- do something with error
+            let _ = tx.send(DsResponse::Error(Status::not_found(
+                "Policy rule does not exist",
+            )));
+            return;
+        }
+
+        let updated_policy: RegisteredPolicyRule = rule.clone().into();
+
+        // try to persist the new policy to the backend and if that succeeds, update it in memory
+        match self.backend.save_policy(&updated_policy).await {
+            Ok(_) => {
+                let _ = self.policies.insert(name.clone(), updated_policy.clone());
+            }
+            Err(err) => {
+                // TODO! -- do something with error
+                let _ = tx.send(DsResponse::Error(Status::internal(err)));
+                return;
+            }
+        }
+
+        let _ = tx.send(DsResponse::SinglePolicy(updated_policy.into()));
+    }
+
+    /// Remove an existing policy
+    async fn remove_policy(&mut self, req: RemovePolicyRequest, tx: Sender<DsResponse>) {
+        let name = req.name.to_ascii_lowercase();
+
+        // if policy rule does not exist, return an error
+        if !self.roles.contains_key(&name) {
+            println!("Policy rule not found: {}", name);
+
+            // TODO! -- do something with error
+            let _ = tx.send(DsResponse::Error(Status::not_found(
+                "Policy rule does not exist",
+            )));
+            return;
+        }
+
+        let existing_policy = self.policies.get(&name).unwrap().to_owned();
+
+        // try to remove the policy from backend before updating memory
+        match self.backend.remove_policy(&name).await {
+            Ok(_) => {
+                let _ = self.policies.remove(&name);
+            }
+            Err(err) => {
+                // TODO! -- do something with error
+                let _ = tx.send(DsResponse::Error(Status::internal(err)));
+                return;
+            }
+        }
+
+        let _ = tx.send(DsResponse::SinglePolicy(existing_policy.into()));
+    }
+
+    /// Get policies based on filters
+    async fn get_policies(&mut self, req: GetPoliciesRequest, tx: Sender<DsResponse>) {
+        let mut policies: Vec<PolicyRule> = Vec::new();
+
+        let req_name = req.name.map(|n| n.to_ascii_lowercase());
+        for (name, policy) in self.policies.iter() {
+            // see if name matches if a name filter was given
+            if let Some(ref req_name) = req_name {
+                if name != req_name {
+                    continue;
+                }
+            }
+
+            // see if entity check matches if entity check filter was given
+            if req.entity_check.is_some() {
+                // NOT IMPLEMENTED
+                let _ = tx.send(DsResponse::Error(Status::unimplemented(
+                    "Filter by entity check not implemented",
+                )));
+                return;
+            }
+
+            // see if env attributes match
+            if !req.env_attributes.is_empty() {
+                // NOT IMPLEMENTED
+                let _ = tx.send(DsResponse::Error(Status::unimplemented(
+                    "Filter by environment attribute checks is not implemented",
+                )));
+                return;
+            }
+
+            // see if target check matches if target check filter was given
+            if req.target_check.is_some() {
+                // NOT IMPLEMENTED
+                let _ = tx.send(DsResponse::Error(Status::unimplemented(
+                    "Filter by target check not implemented",
+                )));
+                return;
+            }
+
+            policies.push(policy.to_owned().into());
+        }
+
+        let _ = tx.send(DsResponse::MultiplePolicies(policies));
     }
 }

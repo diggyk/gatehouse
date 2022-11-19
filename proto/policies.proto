@@ -1,0 +1,154 @@
+syntax = "proto3";
+package policies;
+
+/** String comparison operators */
+enum CMP {
+    // equals
+    IS = 0;
+    // does not equal
+    IS_NOT = 1;
+}
+
+/** Set comparison operators */
+enum SET {
+    // set includes
+    HAS = 0;
+    // set does not inclue
+    HAS_NOT = 1;
+}
+
+/** Numerical comparison operators */
+enum NUM {
+    // number equals
+    EQUALS = 0;
+    // number is less than
+    LESS_THAN = 1;
+    // number is greater than
+    MORE_THAN = 2;
+}
+
+/** Decision this rule make */
+enum DECIDE {
+    // rule decides explicity FAIL
+    FAIL = 0;
+    // rule decides explicit PASS
+    PASS = 1;
+}
+
+/** String based check */
+message StringCheck {
+    // how to compare the string
+    CMP val_cmp = 1;
+    // string to compare against
+    string val = 2;
+}
+
+/** Set based checking */
+message KvCheck {
+    // key to check
+    string key = 1;
+
+    // how to check the set
+    SET op = 2;
+
+    // value to check for in the set
+    string val = 3;
+}
+
+/** Number check */
+message NumberCheck {
+    // the operation to use for this number check
+    NUM op = 1;
+    // the value to check against
+    sint32 val = 2;
+}
+
+/** How to check an entity */
+message EntityCheck {
+    // if specified, policy should check name of the entity
+    optional StringCheck name = 1;
+    // if specified, policy should check the type of the entity
+    optional StringCheck typestr = 2;
+    // if specified, policy should check environment variables
+    repeated KvCheck attributes = 3;
+    // if specified, policy should check the bucket entity falls into
+    optional NumberCheck bucket = 4;
+}
+
+/** How to check a target */
+message TargetCheck {
+    // if specified, this policy applies to targets with a name that passes this check
+    optional StringCheck name = 1;
+    // if specified, this policy applies to targets which pass this type check
+    optional StringCheck typestr = 2;
+    // if specified, this policy applies to targets based on these attribute checks
+    repeated KvCheck attributes = 3;
+    // if specified, this policy applies to actions that pass this check
+    optional StringCheck action = 4;
+}
+
+/// Policy 
+message PolicyRule {
+    // Short human readable name
+    string name = 1;
+
+    // Human readable description
+    optional string desc = 2;
+
+    // Entity rules to apply to determine if this policy should apply
+    optional EntityCheck entity_check = 3;
+
+    // Environment check to perform
+    repeated KvCheck env_attributes = 4;
+
+    // Action rules to see if this policy should be applied
+    optional TargetCheck target_check = 5;
+
+    // Decision
+    DECIDE decision = 6;
+}
+
+/** Add a new policy rule request */
+message AddPolicyRequest {
+    // the new policy to add
+    PolicyRule rule = 1;
+}
+
+/** Modify/update policy request */
+message ModifyPolicyRequest {
+    // the updated policy to commit
+    PolicyRule rule = 1;
+}
+
+/** Remove policy request */
+message RemovePolicyRequest {
+    // name of policy to remove
+    string name = 1;
+}
+
+/** request to et policies that match the optional filters */
+message GetPoliciesRequest {
+    // Short human readable name
+    optional string name = 1;
+
+    // Entity rules to apply to determine if this policy should apply
+    optional EntityCheck entity_check = 2;
+
+    // Environment check to perform
+    repeated KvCheck env_attributes = 3;
+
+    // Action rules to see if this policy should be applied
+    optional TargetCheck target_check = 4;
+}
+
+/** Single policy response message */
+message PolicyResponse {
+    // the policy added/modified/deleted
+    PolicyRule rule = 1;
+}
+
+/** Multiple policy response message */
+message MultiPolicyResponse {
+    // policies found
+    repeated PolicyRule rules = 1;
+}

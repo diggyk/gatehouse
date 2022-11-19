@@ -11,6 +11,9 @@ use crate::proto::entities::{
 use crate::proto::groups::{
     AddGroupRequest, GetAllGroupsRequest, Group, ModifyGroupRequest, RemoveGroupRequest,
 };
+use crate::proto::policies::{
+    AddPolicyRequest, GetPoliciesRequest, ModifyPolicyRequest, PolicyRule, RemovePolicyRequest,
+};
 use crate::proto::roles::{AddRoleRequest, GetAllRolesRequest, RemoveRoleRequest, Role};
 use crate::proto::targets::{
     AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
@@ -36,6 +39,11 @@ pub(crate) enum DsRequest {
     ModifyGroup(ModifyGroupRequest, Sender<DsResponse>),
     RemoveGroup(RemoveGroupRequest, Sender<DsResponse>),
     GetGroups(GetAllGroupsRequest, Sender<DsResponse>),
+
+    AddPolicy(AddPolicyRequest, Sender<DsResponse>),
+    ModifyPolicy(ModifyPolicyRequest, Sender<DsResponse>),
+    RemovePolicy(RemovePolicyRequest, Sender<DsResponse>),
+    GetPolicies(GetPoliciesRequest, Sender<DsResponse>),
 }
 
 #[derive(Debug)]
@@ -53,4 +61,7 @@ pub enum DsResponse {
 
     SingleGroup(Group),
     MultipleGroups(Vec<Group>),
+
+    SinglePolicy(PolicyRule),
+    MultiplePolicies(Vec<PolicyRule>),
 }

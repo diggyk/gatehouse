@@ -3,6 +3,7 @@ package gatehouse;
 
 import "entities.proto";
 import "groups.proto";
+import "policies.proto";
 import "roles.proto";
 import "targets.proto";
 
@@ -56,4 +57,17 @@ service Gatehouse {
 
     // get all groups (or with filters)
     rpc GetGroups (groups.GetAllGroupsRequest) returns (groups.MultiGroupResponse);
+
+    /** POLICIES */
+    // add a new policy
+    rpc AddPolicy (policies.AddPolicyRequest) returns (policies.PolicyResponse);
+
+    // modify an existing policy
+    rpc ModifyPolicy (policies.ModifyPolicyRequest) returns (policies.PolicyResponse);
+
+    // remove an existing policy
+    rpc RemovePolicy (policies.RemovePolicyRequest) returns (policies.PolicyResponse);
+
+    // get policies
+    rpc GetPolicies (policies.GetPoliciesRequest) returns (policies.MultiPolicyResponse);
 }

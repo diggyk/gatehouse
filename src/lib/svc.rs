@@ -16,6 +16,10 @@ use crate::proto::groups::{
     AddGroupRequest, GetAllGroupsRequest, GroupResponse, ModifyGroupRequest, MultiGroupResponse,
     RemoveGroupRequest,
 };
+use crate::proto::policies::{
+    AddPolicyRequest, GetPoliciesRequest, ModifyPolicyRequest, MultiPolicyResponse, PolicyResponse,
+    RemovePolicyRequest,
+};
 use crate::proto::roles::{
     AddRoleRequest, GetAllRolesRequest, MultiRoleResponse, RemoveRoleRequest, RoleResponse,
 };
@@ -422,6 +426,102 @@ impl Gatehouse for GatehouseSvc {
                 //TODO! -- add metrics
                 println!("Got {} groups", groups.len());
                 return Ok(Response::new(MultiGroupResponse { groups }));
+            }
+            DsResponse::Error(status) => return Err(status),
+            _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /// Add policy
+    async fn add_policy(
+        &self,
+        request: Request<AddPolicyRequest>,
+    ) -> Result<Response<PolicyResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        match self
+            .call_datastore(DsRequest::AddPolicy(req.clone(), tx), "add policy", rx)
+            .await?
+        {
+            DsResponse::SinglePolicy(rule) => {
+                //TODO! -- add metrics
+                println!("Added policy rule {}", rule);
+                return Ok(Response::new(PolicyResponse { rule: Some(rule) }));
+            }
+            DsResponse::Error(status) => return Err(status),
+            _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /// Modify policy
+    async fn modify_policy(
+        &self,
+        request: Request<ModifyPolicyRequest>,
+    ) -> Result<Response<PolicyResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        match self
+            .call_datastore(
+                DsRequest::ModifyPolicy(req.clone(), tx),
+                "modify policy",
+                rx,
+            )
+            .await?
+        {
+            DsResponse::SinglePolicy(rule) => {
+                //TODO! -- add metrics
+                println!("Modified policy rule {}", rule);
+                return Ok(Response::new(PolicyResponse { rule: Some(rule) }));
+            }
+            DsResponse::Error(status) => return Err(status),
+            _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /// Remove policy
+    async fn remove_policy(
+        &self,
+        request: Request<RemovePolicyRequest>,
+    ) -> Result<Response<PolicyResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        match self
+            .call_datastore(
+                DsRequest::RemovePolicy(req.clone(), tx),
+                "remove policy",
+                rx,
+            )
+            .await?
+        {
+            DsResponse::SinglePolicy(rule) => {
+                //TODO! -- add metrics
+                println!("Removed policy rule {}", rule);
+                return Ok(Response::new(PolicyResponse { rule: Some(rule) }));
+            }
+            DsResponse::Error(status) => return Err(status),
+            _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /// Get policies based on filters
+    async fn get_policies(
+        &self,
+        request: Request<GetPoliciesRequest>,
+    ) -> Result<Response<MultiPolicyResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        match self
+            .call_datastore(DsRequest::GetPolicies(req.clone(), tx), "get policies", rx)
+            .await?
+        {
+            DsResponse::MultiplePolicies(rules) => {
+                //TODO! -- add metrics
+                println!("Got {} policies", rules.len());
+                return Ok(Response::new(MultiPolicyResponse { rules }));
             }
             DsResponse::Error(status) => return Err(status),
             _ => return Err(Status::internal("Got unexpected answer from datastore")),

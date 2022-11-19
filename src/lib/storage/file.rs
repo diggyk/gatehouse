@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::entity::RegisteredEntity;
 use crate::group::RegisteredGroup;
+use crate::policy::RegisteredPolicyRule;
 use crate::role::RegisteredRole;
 use crate::target::RegisteredTarget;
 
@@ -24,6 +25,10 @@ impl FileStorage {
             .expect("Could not create file backend storage");
 
         tokio::fs::create_dir_all(format!("{}/groups/", basepath))
+            .await
+            .expect("Could not create file backend storage");
+
+        tokio::fs::create_dir_all(format!("{}/policies/", basepath))
             .await
             .expect("Could not create file backend storage");
 
@@ -160,8 +165,8 @@ impl FileStorage {
         Ok(())
     }
 
-    pub async fn remove_role(&self, role: &RegisteredRole) -> Result<(), String> {
-        let target_path = format!("{}/roles/{}.json", self.basepath, role.name);
+    pub async fn remove_role(&self, name: &str) -> Result<(), String> {
+        let target_path = format!("{}/roles/{}.json", self.basepath, name);
 
         tokio::fs::remove_file(target_path)
             .await
@@ -208,8 +213,8 @@ impl FileStorage {
         Ok(())
     }
 
-    pub async fn remove_group(&self, group: &RegisteredGroup) -> Result<(), String> {
-        let target_path = format!("{}/groups/{}.json", self.basepath, group.name);
+    pub async fn remove_group(&self, name: &str) -> Result<(), String> {
+        let target_path = format!("{}/groups/{}.json", self.basepath, name);
 
         tokio::fs::remove_file(target_path)
             .await
@@ -240,6 +245,50 @@ impl FileStorage {
                 group.members.len(),
                 group.roles.len()
             );
+        }
+
+        Ok(groups)
+    }
+
+    pub async fn save_policy(&self, policy: &RegisteredPolicyRule) -> Result<(), String> {
+        let target_path = format!("{}/policies/{}.json", self.basepath, policy.name);
+
+        let json = serde_json::to_string(&policy).map_err(|err| err.to_string())?;
+
+        tokio::fs::write(target_path, json)
+            .await
+            .map_err(|err| err.to_string())?;
+
+        Ok(())
+    }
+
+    pub async fn remove_policy(&self, name: &str) -> Result<(), String> {
+        let target_path = format!("{}/groups/{}.json", self.basepath, name);
+
+        tokio::fs::remove_file(target_path)
+            .await
+            .map_err(|err| err.to_string())?;
+
+        Ok(())
+    }
+
+    pub async fn load_policies(&self) -> Result<HashMap<String, RegisteredPolicyRule>, String> {
+        let mut groups = HashMap::new();
+
+        let mut dir = tokio::fs::read_dir(format!("{}/policies", self.basepath))
+            .await
+            .expect("Could not read policies from filesystem");
+
+        while let Some(entry) = dir.next_entry().await.map_err(|err| err.to_string())? {
+            let json = tokio::fs::read_to_string(entry.path())
+                .await
+                .map_err(|err| err.to_string())?;
+
+            let policy: RegisteredPolicyRule =
+                serde_json::from_str(&json).map_err(|err| err.to_string())?;
+            groups.insert(policy.name.clone(), policy.clone());
+
+            println!("Loaded policy {}", policy.name,);
         }
 
         Ok(groups)
