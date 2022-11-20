@@ -3,14 +3,14 @@
 //! The datastore holds all the policies, targets, and internal PIP data
 
 use std::collections::{HashMap, HashSet};
-use std::ops::Deref;
 use tokio::sync::oneshot::Sender;
 use tonic::Status;
 
 use crate::entity::RegisteredEntity;
 use crate::group::{RegisteredGroup, RegisteredGroupMember};
 use crate::msgs::{DsRequest, DsResponse};
-use crate::policy::{EntityCheck, RegisteredPolicyRule};
+use crate::policy::RegisteredPolicyRule;
+use crate::proto::base::CheckRequest;
 use crate::proto::entities::{
     AddEntityRequest, Entity, GetAllEntitiesRequest, ModifyEntityRequest, RemoveEntityRequest,
 };
@@ -123,6 +123,8 @@ impl Datastore {
                 DsRequest::ModifyPolicy(req, tx) => self.modify_policy(req, tx).await,
                 DsRequest::RemovePolicy(req, tx) => self.remove_policy(req, tx).await,
                 DsRequest::GetPolicies(req, tx) => self.get_policies(req, tx).await,
+                // CHECKS
+                DsRequest::Check(req, tx) => self.check(req, tx).await,
             }
         }
 
@@ -888,7 +890,7 @@ impl Datastore {
         let name = rule.name.to_ascii_lowercase();
 
         // if policy rule does not exist, return an error
-        if !self.roles.contains_key(&name) {
+        if !self.policies.contains_key(&name) {
             println!("Policy rule not found: {}", name);
 
             // TODO! -- do something with error
@@ -920,7 +922,7 @@ impl Datastore {
         let name = req.name.to_ascii_lowercase();
 
         // if policy rule does not exist, return an error
-        if !self.roles.contains_key(&name) {
+        if !self.policies.contains_key(&name) {
             println!("Policy rule not found: {}", name);
 
             // TODO! -- do something with error
@@ -991,5 +993,78 @@ impl Datastore {
         }
 
         let _ = tx.send(DsResponse::MultiplePolicies(policies));
+    }
+
+    /// Perform a check
+    ///
+    /// We will receive an entity (type and name) and a list of attributes that the policy
+    /// enforcement point (PEP) wants to share about the entity. PEP may also share environment
+    /// attributes in the form of key/val pairs (vals are a list). Finally, the PEP will specify
+    /// the target (name and type) and action to be checked against the policies. DS will evaluate
+    /// against known policy rules and decide on a PASS/FAIL decision.
+    ///
+    /// The entity may match a registered entity, in which case, we'll add some more attributes if
+    /// we have them. The entity may also belong to a group which has been granted some roles.
+    /// In that case, we will add "member-of" attributes for each group, and "has-role" attributes
+    /// for each role. Lastly, we will determine a bucket (between 0-99) using the murmur3 algo
+    async fn check(&mut self, req: CheckRequest, tx: Sender<DsResponse>) {
+        let entity: RegisteredEntity = self.extend_entity(req.entity.unwrap());
+        let env_attributes = req.env_attributes;
+
+        // get any known attributes about the target
+        let target_attributes = self.get_target_attributes(&req.target_name, &req.target_type);
+    }
+
+    /** HELPERS */
+    /// Extend a given entity with additional attributes
+    ///
+    /// Given an entity, build a registered entity with any additional attributes from a
+    /// known entity, as well as any group/roles we might have.
+    fn extend_entity(&self, passed_entity: Entity) -> RegisteredEntity {
+        let mut entity: RegisteredEntity = RegisteredEntity::from(passed_entity);
+        let typed_entities = self.entities.get(&entity.typestr);
+
+        // extend attributes if we know about this entity
+        if let Some(typed_entities) = typed_entities {
+            if let Some(found_entity) = typed_entities.get(&entity.name).map(|e| e.to_owned()) {
+                entity
+                    .attributes
+                    .extend(found_entity.attributes.into_iter());
+            }
+        }
+
+        // check groups
+        // create a representation of this entity as a RegisteredGroupMember so we can
+        let entity_as_member = RegisteredGroupMember::from(&entity);
+        for group in self.groups.values() {
+            if group.members.contains(&entity_as_member) {
+                entity
+                    .attributes
+                    .entry("member-of".to_string())
+                    .or_default()
+                    .insert(group.name.clone());
+
+                entity
+                    .attributes
+                    .entry("has-role".to_string())
+                    .or_default()
+                    .extend(group.roles.clone());
+            }
+        }
+
+        entity
+    }
+
+    /// Return attributes for a target if known
+    fn get_target_attributes(&self, name: &str, typestr: &str) -> HashMap<String, HashSet<String>> {
+        let typed_targets = self.targets.get(typestr);
+
+        if let Some(typed_targets) = typed_targets {
+            if let Some(found_target) = typed_targets.get(name) {
+                return found_target.attributes.clone();
+            }
+        }
+
+        return HashMap::new();
     }
 }

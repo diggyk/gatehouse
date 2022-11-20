@@ -263,7 +263,7 @@ impl FileStorage {
     }
 
     pub async fn remove_policy(&self, name: &str) -> Result<(), String> {
-        let target_path = format!("{}/groups/{}.json", self.basepath, name);
+        let target_path = format!("{}/policies/{}.json", self.basepath, name);
 
         tokio::fs::remove_file(target_path)
             .await

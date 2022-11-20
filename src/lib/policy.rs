@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 
 use crate::proto::policies as protos;
@@ -107,6 +109,14 @@ impl From<Decide> for protos::Decide {
         match d {
             Decide::Fail => Self::Fail,
             Decide::Pass => Self::Pass,
+        }
+    }
+}
+impl Display for protos::Decide {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            protos::Decide::Fail => write!(f, "FAIL"),
+            protos::Decide::Pass => write!(f, "PASS"),
         }
     }
 }

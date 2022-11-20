@@ -3,9 +3,9 @@ package targets;
 
 import "common.proto";
 
-/** Describes a target */
+/// Describes a target *
 message Target {
-    // the nameentity of the target (case insensitive)
+    // the name of the target (case insensitive)
     // ex: "maindb"
     string name = 1;
 
@@ -20,7 +20,7 @@ message Target {
     map<string, common.AttributeValues> attributes = 4;
 }
 
-/** Request message for adding a new target */
+/// Request message for adding a new target
 message AddTargetRequest {
     // the nameentity of the target (case insensitive)
     // ex: "maindb"
@@ -37,7 +37,7 @@ message AddTargetRequest {
     map<string, common.AttributeValues> attributes = 4;
 }
 
-/** Request to modify a target */
+/// Request to modify a target
 message ModifyTargetRequest {
     // the nameentity of the target (case insensitive)
     // ex: "maindb"
@@ -60,7 +60,7 @@ message ModifyTargetRequest {
     map<string, common.AttributeValues> remove_attributes = 6;
 }
 
-/** Request to add actions to an existing target */
+/// Request to add actions to an existing target
 message RemoveTargetRequest {
     // the nameentity of the target (case insensitive)
     // ex: "maindb"
@@ -71,7 +71,7 @@ message RemoveTargetRequest {
     string typestr = 2; 
 }
 
-/** Request a list of all targets */
+/// Request a list of all targets
 message GetAllTargetsRequest {
     // optional name to filter by the name
     optional string name = 1;
@@ -80,13 +80,13 @@ message GetAllTargetsRequest {
     optional string typestr = 2;
 }
 
-/** The single target response */
+/// The single target response
 message TargetResponse {
     // the target
     Target target = 1;
 }
 
-/** A response with multiple targets */
+/// A response with multiple targets */
 message MultiTargetResponse {
     // list of targets
     repeated Target targets = 1;

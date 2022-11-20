@@ -8,6 +8,7 @@ use tonic::{Request, Response, Status};
 use crate::ds::Datastore;
 use crate::msgs::{DsRequest, DsResponse};
 use crate::proto::base::gatehouse_server::Gatehouse;
+use crate::proto::base::{CheckRequest, CheckResponse};
 use crate::proto::entities::{
     AddEntityRequest, EntityResponse, GetAllEntitiesRequest, ModifyEntityRequest,
     MultiEntityResponse, RemoveEntityRequest,
@@ -525,6 +526,34 @@ impl Gatehouse for GatehouseSvc {
             }
             DsResponse::Error(status) => return Err(status),
             _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /// Make a decision an entity wanting to take an action on a target
+    async fn check(
+        &self,
+        request: Request<CheckRequest>,
+    ) -> Result<Response<CheckResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        if req.entity.is_none() {
+            return Err(Status::invalid_argument("Entity cannot be null"));
+        }
+
+        match self
+            .call_datastore(DsRequest::Check(req.clone(), tx), "perform check", rx)
+            .await?
+        {
+            DsResponse::CheckResult(decision) => {
+                //TODO! -- add metrics
+                println!("Got decision: {}", decision);
+                Ok(Response::new(CheckResponse {
+                    decision: decision.into(),
+                }))
+            }
+            DsResponse::Error(status) => Err(status),
+            _ => Err(Status::internal("Got unexpected answer from datastore")),
         }
     }
 }

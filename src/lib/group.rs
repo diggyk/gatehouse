@@ -8,6 +8,7 @@ use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
+use crate::entity::RegisteredEntity;
 use crate::proto::groups::{Group, GroupMember};
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq, Serialize, Deserialize)]
@@ -76,6 +77,14 @@ impl From<GroupMember> for RegisteredGroupMember {
         Self {
             name: g.name,
             typestr: g.typestr,
+        }
+    }
+}
+impl From<&RegisteredEntity> for RegisteredGroupMember {
+    fn from(re: &RegisteredEntity) -> Self {
+        Self {
+            name: re.name,
+            typestr: re.typestr,
         }
     }
 }

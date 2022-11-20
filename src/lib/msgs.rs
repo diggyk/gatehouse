@@ -5,6 +5,7 @@
 use tokio::sync::oneshot::Sender;
 use tonic::Status;
 
+use crate::proto::base::CheckRequest;
 use crate::proto::entities::{
     AddEntityRequest, Entity, GetAllEntitiesRequest, ModifyEntityRequest, RemoveEntityRequest,
 };
@@ -12,7 +13,8 @@ use crate::proto::groups::{
     AddGroupRequest, GetAllGroupsRequest, Group, ModifyGroupRequest, RemoveGroupRequest,
 };
 use crate::proto::policies::{
-    AddPolicyRequest, GetPoliciesRequest, ModifyPolicyRequest, PolicyRule, RemovePolicyRequest,
+    AddPolicyRequest, Decide, GetPoliciesRequest, ModifyPolicyRequest, PolicyRule,
+    RemovePolicyRequest,
 };
 use crate::proto::roles::{AddRoleRequest, GetAllRolesRequest, RemoveRoleRequest, Role};
 use crate::proto::targets::{
@@ -44,6 +46,8 @@ pub(crate) enum DsRequest {
     ModifyPolicy(ModifyPolicyRequest, Sender<DsResponse>),
     RemovePolicy(RemovePolicyRequest, Sender<DsResponse>),
     GetPolicies(GetPoliciesRequest, Sender<DsResponse>),
+
+    Check(CheckRequest, Sender<DsResponse>),
 }
 
 #[derive(Debug)]
@@ -64,4 +68,6 @@ pub enum DsResponse {
 
     SinglePolicy(PolicyRule),
     MultiplePolicies(Vec<PolicyRule>),
+
+    CheckResult(Decide),
 }
