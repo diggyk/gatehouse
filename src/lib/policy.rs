@@ -1,7 +1,9 @@
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
+use crate::entity::RegisteredEntity;
 use crate::proto::policies as protos;
 
 /// A string comparison check
@@ -12,6 +14,15 @@ pub(crate) enum StringCheck {
     // chec, if string does not equal this string
     IsNot(String),
 }
+impl StringCheck {
+    // check a string value against this string check
+    pub fn check(&self, val: &str) -> bool {
+        match self {
+            StringCheck::Is(check_val) => val == check_val,
+            StringCheck::IsNot(check_val) => val != check_val,
+        }
+    }
+}
 
 /// A key value check
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -20,6 +31,31 @@ pub(crate) enum KvCheck {
     Has(String, String),
     // check if a particular key does not have a particular value
     HasNot(String, String),
+}
+impl KvCheck {
+    // check a map of attrib/vals for a match
+    pub fn check(&self, map: &HashMap<String, HashSet<String>>) -> bool {
+        match self {
+            KvCheck::Has(key, val) => {
+                if !map.contains_key(key) {
+                    false
+                } else if let Some(vals) = map.get(key) {
+                    vals.contains(val)
+                } else {
+                    false
+                }
+            }
+            KvCheck::HasNot(key, val) => {
+                if !map.contains_key(key) {
+                    true
+                } else if let Some(vals) = map.get(key) {
+                    !vals.contains(val)
+                } else {
+                    true
+                }
+            }
+        }
+    }
 }
 
 impl From<protos::KvCheck> for KvCheck {
@@ -56,6 +92,16 @@ pub(crate) enum NumberCheck {
     LessThan(i32),
     // check if number is more than this value
     MoreThan(i32),
+}
+impl NumberCheck {
+    /// check if a number passes this check
+    pub fn check(&self, num: i32) -> bool {
+        match self {
+            NumberCheck::Equals(val) => num == *val,
+            NumberCheck::LessThan(val) => num < *val,
+            NumberCheck::MoreThan(val) => num > *val,
+        }
+    }
 }
 
 impl From<protos::NumberCheck> for NumberCheck {
@@ -148,10 +194,40 @@ impl From<StringCheck> for protos::StringCheck {
 /// The entity match check in a rule
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct EntityCheck {
-    name: Option<StringCheck>,
-    typestr: Option<StringCheck>,
-    attributes: Vec<KvCheck>,
-    bucket: Option<NumberCheck>,
+    pub name: Option<StringCheck>,
+    pub typestr: Option<StringCheck>,
+    pub attributes: Vec<KvCheck>,
+    pub bucket: Option<NumberCheck>,
+}
+impl EntityCheck {
+    /// perform a check against a potential entity
+    pub fn check(&self, entity: &RegisteredEntity) -> bool {
+        if let Some(ref name_check) = self.name {
+            if !name_check.check(&entity.name) {
+                // name does not match
+                return false;
+            }
+        }
+
+        if let Some(ref type_check) = self.typestr {
+            if !type_check.check(&entity.typestr) {
+                // type does not match
+                return false;
+            }
+        }
+
+        if self.attributes.iter().any(|a| !a.check(&entity.attributes)) {
+            return false;
+        }
+
+        if let Some(ref bucket_check) = self.bucket {
+            if !bucket_check.check(entity.bucket().into()) {
+                return false;
+            }
+        }
+
+        true
+    }
 }
 
 /// convert the protobuf version to our version
@@ -187,6 +263,44 @@ pub(crate) struct TargetCheck {
     typestr: Option<StringCheck>,
     attributes: Vec<KvCheck>,
     action: Option<StringCheck>,
+}
+impl TargetCheck {
+    /// perform a check against a potential entity
+    pub fn check(
+        &self,
+        target_name: &str,
+        target_type: &str,
+        target_attributes: &HashMap<String, HashSet<String>>,
+        target_action: &str,
+    ) -> bool {
+        if let Some(ref name_check) = self.name {
+            if !name_check.check(target_name) {
+                // name does not match
+                return false;
+            }
+        }
+
+        if let Some(ref type_check) = self.typestr {
+            if !type_check.check(target_type) {
+                // type does not match
+                return false;
+            }
+        }
+
+        if self.attributes.iter().any(|a| !a.check(target_attributes)) {
+            // one or more attributes do not match
+            return false;
+        }
+
+        if let Some(action_check) = &self.action {
+            if !action_check.check(target_action) {
+                // action does not match
+                return false;
+            }
+        }
+
+        true
+    }
 }
 
 impl From<protos::TargetCheck> for TargetCheck {

@@ -83,8 +83,8 @@ impl From<GroupMember> for RegisteredGroupMember {
 impl From<&RegisteredEntity> for RegisteredGroupMember {
     fn from(re: &RegisteredEntity) -> Self {
         Self {
-            name: re.name,
-            typestr: re.typestr,
+            name: re.name.clone(),
+            typestr: re.typestr.clone(),
         }
     }
 }

@@ -9,8 +9,9 @@ use tonic::Status;
 use crate::entity::RegisteredEntity;
 use crate::group::{RegisteredGroup, RegisteredGroupMember};
 use crate::msgs::{DsRequest, DsResponse};
-use crate::policy::RegisteredPolicyRule;
+use crate::policy::{Decide, EntityCheck, KvCheck, RegisteredPolicyRule};
 use crate::proto::base::CheckRequest;
+use crate::proto::common::AttributeValues;
 use crate::proto::entities::{
     AddEntityRequest, Entity, GetAllEntitiesRequest, ModifyEntityRequest, RemoveEntityRequest,
 };
@@ -26,6 +27,7 @@ use crate::proto::targets::{
 };
 use crate::role::RegisteredRole;
 use crate::storage::file::FileStorage;
+use crate::storage::Backend;
 use crate::target::RegisteredTarget;
 
 pub struct Datastore {
@@ -1009,10 +1011,57 @@ impl Datastore {
     /// for each role. Lastly, we will determine a bucket (between 0-99) using the murmur3 algo
     async fn check(&mut self, req: CheckRequest, tx: Sender<DsResponse>) {
         let entity: RegisteredEntity = self.extend_entity(req.entity.unwrap());
-        let env_attributes = req.env_attributes;
+        let mut env_attributes = HashMap::new();
+        for (key, vals) in req.env_attributes {
+            env_attributes.insert(key, HashSet::from_iter(vals.values));
+        }
 
         // get any known attributes about the target
         let target_attributes = self.get_target_attributes(&req.target_name, &req.target_type);
+
+        // TODO -- refactor the policy store to make applicable polices quicker to find
+        // Examine every policy -- if the entity check, environment check, and target check's pass
+        // then we can make a determination. If we get an explicit DENY from any rule, we exit
+        // immediately.
+        let mut decision = Decide::Fail;
+        for (_, policy) in self.policies.iter() {
+            if let Some(ref entity_check) = policy.entity_check {
+                if !entity_check.check(&entity) {
+                    // this entity check does not apply to this request
+                    continue;
+                }
+            }
+
+            // perform environment check
+            if !policy
+                .env_attributes
+                .iter()
+                .all(|ea| ea.check(&env_attributes))
+            {
+                // these environment checks do not match
+                continue;
+            }
+
+            if let Some(ref target_check) = policy.target_check {
+                if !target_check.check(
+                    &req.target_name,
+                    &req.target_type,
+                    &target_attributes,
+                    &req.target_action,
+                ) {
+                    // this target does not match
+                    continue;
+                }
+            }
+
+            // all conditions must match; take decision
+            decision = policy.decision.clone();
+            if let Decide::Fail = decision {
+                break;
+            }
+        }
+
+        let _ = tx.send(DsResponse::CheckResult(decision.into()));
     }
 
     /** HELPERS */
@@ -1065,6 +1114,6 @@ impl Datastore {
             }
         }
 
-        return HashMap::new();
+        HashMap::new()
     }
 }

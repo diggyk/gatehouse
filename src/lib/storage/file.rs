@@ -1,10 +1,14 @@
 use std::collections::HashMap;
 
+use tonic::async_trait;
+
 use crate::entity::RegisteredEntity;
 use crate::group::RegisteredGroup;
 use crate::policy::RegisteredPolicyRule;
 use crate::role::RegisteredRole;
 use crate::target::RegisteredTarget;
+
+use super::Backend;
 
 pub(crate) struct FileStorage {
     basepath: String,
@@ -36,8 +40,11 @@ impl FileStorage {
             basepath: basepath.to_string(),
         }
     }
+}
 
-    pub async fn save_target(&self, tgt: &RegisteredTarget) -> Result<(), String> {
+#[async_trait]
+impl Backend for FileStorage {
+    async fn save_target(&self, tgt: &RegisteredTarget) -> Result<(), String> {
         let target_path = format!(
             "{}/targets/{}-{}.json",
             self.basepath, tgt.typestr, tgt.name
@@ -52,7 +59,7 @@ impl FileStorage {
         Ok(())
     }
 
-    pub async fn remove_target(&self, tgt: &RegisteredTarget) -> Result<(), String> {
+    async fn remove_target(&self, tgt: &RegisteredTarget) -> Result<(), String> {
         let target_path = format!(
             "{}/targets/{}-{}.json",
             self.basepath, tgt.typestr, tgt.name
@@ -65,7 +72,7 @@ impl FileStorage {
         Ok(())
     }
 
-    pub async fn load_targets(
+    async fn load_targets(
         &self,
     ) -> Result<HashMap<String, HashMap<String, RegisteredTarget>>, String> {
         let mut targets = HashMap::new();
@@ -95,7 +102,7 @@ impl FileStorage {
         Ok(targets)
     }
 
-    pub async fn save_entity(&self, tgt: &RegisteredEntity) -> Result<(), String> {
+    async fn save_entity(&self, tgt: &RegisteredEntity) -> Result<(), String> {
         let target_path = format!(
             "{}/entities/{}-{}.json",
             self.basepath, tgt.typestr, tgt.name
@@ -110,7 +117,7 @@ impl FileStorage {
         Ok(())
     }
 
-    pub async fn remove_entity(&self, tgt: &RegisteredEntity) -> Result<(), String> {
+    async fn remove_entity(&self, tgt: &RegisteredEntity) -> Result<(), String> {
         let target_path = format!(
             "{}/entities/{}-{}.json",
             self.basepath, tgt.typestr, tgt.name
@@ -123,7 +130,7 @@ impl FileStorage {
         Ok(())
     }
 
-    pub async fn load_entities(
+    async fn load_entities(
         &self,
     ) -> Result<HashMap<String, HashMap<String, RegisteredEntity>>, String> {
         let mut targets = HashMap::new();
@@ -153,7 +160,7 @@ impl FileStorage {
         Ok(targets)
     }
 
-    pub async fn save_role(&self, role: &RegisteredRole) -> Result<(), String> {
+    async fn save_role(&self, role: &RegisteredRole) -> Result<(), String> {
         let target_path = format!("{}/roles/{}.json", self.basepath, role.name);
 
         let json = serde_json::to_string(&role).map_err(|err| err.to_string())?;
@@ -165,7 +172,7 @@ impl FileStorage {
         Ok(())
     }
 
-    pub async fn remove_role(&self, name: &str) -> Result<(), String> {
+    async fn remove_role(&self, name: &str) -> Result<(), String> {
         let target_path = format!("{}/roles/{}.json", self.basepath, name);
 
         tokio::fs::remove_file(target_path)
@@ -175,7 +182,7 @@ impl FileStorage {
         Ok(())
     }
 
-    pub async fn load_roles(&self) -> Result<HashMap<String, RegisteredRole>, String> {
+    async fn load_roles(&self) -> Result<HashMap<String, RegisteredRole>, String> {
         let mut roles = HashMap::new();
 
         let mut dir = tokio::fs::read_dir(format!("{}/roles", self.basepath))
@@ -201,7 +208,7 @@ impl FileStorage {
         Ok(roles)
     }
 
-    pub async fn save_group(&self, group: &RegisteredGroup) -> Result<(), String> {
+    async fn save_group(&self, group: &RegisteredGroup) -> Result<(), String> {
         let target_path = format!("{}/groups/{}.json", self.basepath, group.name);
 
         let json = serde_json::to_string(&group).map_err(|err| err.to_string())?;
@@ -213,7 +220,7 @@ impl FileStorage {
         Ok(())
     }
 
-    pub async fn remove_group(&self, name: &str) -> Result<(), String> {
+    async fn remove_group(&self, name: &str) -> Result<(), String> {
         let target_path = format!("{}/groups/{}.json", self.basepath, name);
 
         tokio::fs::remove_file(target_path)
@@ -223,7 +230,7 @@ impl FileStorage {
         Ok(())
     }
 
-    pub async fn load_groups(&self) -> Result<HashMap<String, RegisteredGroup>, String> {
+    async fn load_groups(&self) -> Result<HashMap<String, RegisteredGroup>, String> {
         let mut groups = HashMap::new();
 
         let mut dir = tokio::fs::read_dir(format!("{}/groups", self.basepath))
@@ -250,7 +257,7 @@ impl FileStorage {
         Ok(groups)
     }
 
-    pub async fn save_policy(&self, policy: &RegisteredPolicyRule) -> Result<(), String> {
+    async fn save_policy(&self, policy: &RegisteredPolicyRule) -> Result<(), String> {
         let target_path = format!("{}/policies/{}.json", self.basepath, policy.name);
 
         let json = serde_json::to_string(&policy).map_err(|err| err.to_string())?;
@@ -262,7 +269,7 @@ impl FileStorage {
         Ok(())
     }
 
-    pub async fn remove_policy(&self, name: &str) -> Result<(), String> {
+    async fn remove_policy(&self, name: &str) -> Result<(), String> {
         let target_path = format!("{}/policies/{}.json", self.basepath, name);
 
         tokio::fs::remove_file(target_path)
@@ -272,7 +279,7 @@ impl FileStorage {
         Ok(())
     }
 
-    pub async fn load_policies(&self) -> Result<HashMap<String, RegisteredPolicyRule>, String> {
+    async fn load_policies(&self) -> Result<HashMap<String, RegisteredPolicyRule>, String> {
         let mut groups = HashMap::new();
 
         let mut dir = tokio::fs::read_dir(format!("{}/policies", self.basepath))
