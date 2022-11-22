@@ -2,6 +2,7 @@
 
 //! The datastore holds all the policies, targets, and internal PIP data
 
+use flume::Receiver;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::oneshot::Sender;
 use tonic::Status;
@@ -9,9 +10,10 @@ use tonic::Status;
 use crate::entity::RegisteredEntity;
 use crate::group::{RegisteredGroup, RegisteredGroupMember};
 use crate::msgs::{DsRequest, DsResponse};
-use crate::policy::{Decide, EntityCheck, KvCheck, RegisteredPolicyRule};
+use crate::policy::{Decide, RegisteredPolicyRule};
 use crate::proto::base::CheckRequest;
-use crate::proto::common::AttributeValues;
+use crate::StorageType;
+
 use crate::proto::entities::{
     AddEntityRequest, Entity, GetAllEntitiesRequest, ModifyEntityRequest, RemoveEntityRequest,
 };
@@ -27,12 +29,13 @@ use crate::proto::targets::{
 };
 use crate::role::RegisteredRole;
 use crate::storage::file::FileStorage;
-use crate::storage::Backend;
+use crate::storage::nil::NilStorage;
+use crate::storage::Storage;
 use crate::target::RegisteredTarget;
 
 pub struct Datastore {
     rx: flume::Receiver<DsRequest>,
-    backend: FileStorage,
+    backend: Box<dyn Storage + Send + Sync>,
 
     /// HashMap from type string to HashMap of name to registered target
     targets: HashMap<String, HashMap<String, RegisteredTarget>>,
@@ -51,9 +54,11 @@ pub struct Datastore {
 }
 
 impl Datastore {
-    pub(crate) async fn create() -> flume::Sender<DsRequest> {
-        let (tx, rx) = flume::unbounded();
-        let backend = FileStorage::new("/tmp/gatehouse").await;
+    async fn new(backend: StorageType, rx: Receiver<DsRequest>) -> Self {
+        let backend: Box<dyn Storage + Send + Sync> = match backend {
+            StorageType::FileSystem(path) => Box::new(FileStorage::new(&path).await),
+            StorageType::Nil => Box::new(NilStorage {}),
+        };
 
         let targets = backend
             .load_targets()
@@ -80,7 +85,7 @@ impl Datastore {
             .await
             .expect("Could not load policies from backend");
 
-        let mut ds = Datastore {
+        Datastore {
             rx,
             backend,
             targets,
@@ -88,8 +93,13 @@ impl Datastore {
             roles,
             groups,
             policies,
-        };
+        }
+    }
 
+    /// How the datastore is actually created, returning only the sender channel
+    pub(crate) async fn create(backend: StorageType) -> flume::Sender<DsRequest> {
+        let (tx, rx) = flume::unbounded();
+        let mut ds = Self::new(backend, rx).await;
         tokio::spawn(async move {
             ds.run().await;
         });
@@ -1116,4 +1126,53 @@ impl Datastore {
 
         HashMap::new()
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::sync::oneshot::channel;
+    use tokio::test;
+
+    use crate::proto::common::AttributeValues;
+
+    use super::*;
+
+    fn str(val: &str) -> String {
+        String::from(val)
+    }
+
+    #[test]
+    async fn test_targets() {
+        let (_, rx) = flume::unbounded();
+        let (tx, _) = channel::<DsResponse>();
+        let mut ds = Datastore::new(StorageType::Nil, rx).await;
+
+        let mut map: HashMap<String, AttributeValues> = HashMap::new();
+        map.insert(
+            str("role"),
+            AttributeValues {
+                values: vec![str("main"), str("backup")],
+            },
+        );
+        map.insert(
+            str("env"),
+            AttributeValues {
+                values: vec![str("test")],
+            },
+        );
+
+        let req = AddTargetRequest {
+            name: str("test"),
+            typestr: str("typetest"),
+            actions: vec![str("action1"), str("action2")],
+            attributes: map,
+        };
+        ds.add_target(req, tx).await;
+
+        assert_eq!(ds.targets.len(), 1);
+        assert!(ds.targets.contains_key("typetest"));
+        assert!(ds.targets.get("typetest").unwrap().contains_key("test"));
+    }
+
+    // TODO! -- add more unit tests
 }

@@ -28,6 +28,7 @@ use crate::proto::targets::{
     AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, MultiTargetResponse,
     RemoveTargetRequest, TargetResponse,
 };
+use crate::StorageType;
 
 #[derive(Debug)]
 /// The core Gatehouse server
@@ -38,7 +39,7 @@ pub struct GatehouseSvc {
 impl GatehouseSvc {
     /// Create a new Gatehouse service
     pub async fn new() -> Self {
-        let dstx = Datastore::create().await;
+        let dstx = Datastore::create(StorageType::FileSystem("/tmp/gatehouse".to_string())).await;
         GatehouseSvc { dstx }
     }
 }

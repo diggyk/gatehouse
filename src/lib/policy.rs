@@ -375,3 +375,220 @@ impl From<RegisteredPolicyRule> for protos::PolicyRule {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::{HashMap, HashSet};
+
+    use super::*;
+
+    fn str(val: &str) -> String {
+        val.to_string()
+    }
+
+    #[test]
+    fn test_stringcheck() {
+        assert!(StringCheck::Is(str("testing")).check("testing"));
+        assert!(!StringCheck::Is(str("testing")).check("should fail"));
+
+        assert!(!StringCheck::IsNot(str("testing")).check("testing"));
+        assert!(StringCheck::IsNot(str("testing")).check("should fail"));
+    }
+
+    #[test]
+    fn test_kvcheck() {
+        let mut map: HashMap<String, HashSet<String>> = HashMap::new();
+        map.insert(
+            str("role"),
+            HashSet::from_iter(vec![str("admin"), str("user")]),
+        );
+        map.insert(
+            str("region"),
+            HashSet::from_iter(vec![str("us"), str("emea")]),
+        );
+
+        assert!(KvCheck::Has(str("role"), str("user")).check(&map));
+        assert!(!KvCheck::Has(str("role"), str("manager")).check(&map));
+        assert!(KvCheck::HasNot(str("role"), str("manager")).check(&map));
+        assert!(!KvCheck::Has(str("office"), str("london")).check(&map));
+        assert!(KvCheck::HasNot(str("region"), str("anz")).check(&map));
+        assert!(KvCheck::HasNot(str("office"), str("london")).check(&map));
+    }
+
+    #[test]
+    fn test_numcheck() {
+        assert!(NumberCheck::Equals(50).check(50));
+        assert!(!NumberCheck::Equals(50).check(100));
+        assert!(NumberCheck::LessThan(50).check(40));
+        assert!(!NumberCheck::LessThan(50).check(100));
+        assert!(NumberCheck::MoreThan(50).check(100));
+        assert!(!NumberCheck::MoreThan(50).check(40));
+    }
+
+    #[test]
+    fn test_entitycheck() {
+        let mut map: HashMap<String, HashSet<String>> = HashMap::new();
+        map.insert(
+            str("role"),
+            HashSet::from_iter(vec![str("admin"), str("user")]),
+        );
+        map.insert(str("region"), HashSet::from_iter(vec![str("us")]));
+        let entity = RegisteredEntity::new("kaitlyn", "user", map);
+
+        // an "everything passes" check
+        assert!(EntityCheck {
+            name: None,
+            typestr: None,
+            attributes: vec![],
+            bucket: None,
+        }
+        .check(&entity));
+
+        // check name
+        assert!(EntityCheck {
+            name: Some(StringCheck::Is(str("kaitlyn"))),
+            typestr: None,
+            attributes: vec![],
+            bucket: None,
+        }
+        .check(&entity));
+        assert!(!EntityCheck {
+            name: Some(StringCheck::Is(str("jonny"))),
+            typestr: None,
+            attributes: vec![],
+            bucket: None,
+        }
+        .check(&entity));
+
+        // check typestr
+        assert!(EntityCheck {
+            name: Some(StringCheck::Is(str("kaitlyn"))),
+            typestr: Some(StringCheck::Is(str("user"))),
+            attributes: vec![],
+            bucket: None,
+        }
+        .check(&entity));
+        assert!(!EntityCheck {
+            name: Some(StringCheck::Is(str("kaitlyn"))),
+            typestr: Some(StringCheck::IsNot(str("user"))),
+            attributes: vec![],
+            bucket: None,
+        }
+        .check(&entity));
+
+        // check attributes
+        assert!(EntityCheck {
+            name: Some(StringCheck::Is(str("kaitlyn"))),
+            typestr: Some(StringCheck::Is(str("user"))),
+            attributes: vec![KvCheck::Has(str("region"), str("us"))],
+            bucket: None,
+        }
+        .check(&entity));
+        assert!(!EntityCheck {
+            name: Some(StringCheck::Is(str("kaitlyn"))),
+            typestr: Some(StringCheck::Is(str("user"))),
+            attributes: vec![KvCheck::Has(str("role"), str("manager"))],
+            bucket: None,
+        }
+        .check(&entity));
+
+        // check bucket (which is 28)
+        assert!(EntityCheck {
+            name: Some(StringCheck::Is(str("kaitlyn"))),
+            typestr: Some(StringCheck::Is(str("user"))),
+            attributes: vec![KvCheck::Has(str("region"), str("us"))],
+            bucket: Some(NumberCheck::LessThan(50)),
+        }
+        .check(&entity));
+        assert!(!EntityCheck {
+            name: Some(StringCheck::Is(str("kaitlyn"))),
+            typestr: Some(StringCheck::Is(str("user"))),
+            attributes: vec![KvCheck::Has(str("region"), str("us"))],
+            bucket: Some(NumberCheck::MoreThan(50)),
+        }
+        .check(&entity));
+    }
+
+    #[test]
+    fn test_targetcheck() {
+        let mut map: HashMap<String, HashSet<String>> = HashMap::new();
+        map.insert(
+            str("role"),
+            HashSet::from_iter(vec![str("main"), str("backup")]),
+        );
+        map.insert(str("env"), HashSet::from_iter(vec![str("test")]));
+
+        // test "any target should pass" check
+        assert!(TargetCheck {
+            name: None,
+            typestr: None,
+            attributes: vec![],
+            action: None,
+        }
+        .check("bree", "db", &map, "read"));
+
+        // test name
+        assert!(TargetCheck {
+            name: Some(StringCheck::Is(str("bree"))),
+            typestr: None,
+            attributes: vec![],
+            action: None,
+        }
+        .check("bree", "db", &map, "read"));
+        assert!(!TargetCheck {
+            name: Some(StringCheck::IsNot(str("bree"))),
+            typestr: None,
+            attributes: vec![],
+            action: None,
+        }
+        .check("bree", "db", &map, "read"));
+
+        // test type
+        assert!(TargetCheck {
+            name: Some(StringCheck::Is(str("bree"))),
+            typestr: Some(StringCheck::Is(str("db"))),
+            attributes: vec![],
+            action: None,
+        }
+        .check("bree", "db", &map, "read"));
+        assert!(!TargetCheck {
+            name: Some(StringCheck::Is(str("bree"))),
+            typestr: Some(StringCheck::Is(str("web"))),
+            attributes: vec![],
+            action: None,
+        }
+        .check("bree", "db", &map, "read"));
+
+        // test attributes
+        assert!(TargetCheck {
+            name: Some(StringCheck::Is(str("bree"))),
+            typestr: Some(StringCheck::Is(str("db"))),
+            attributes: vec![KvCheck::Has(str("env"), str("test"))],
+            action: None,
+        }
+        .check("bree", "db", &map, "read"));
+        assert!(!TargetCheck {
+            name: Some(StringCheck::Is(str("bree"))),
+            typestr: Some(StringCheck::Is(str("db"))),
+            attributes: vec![KvCheck::Has(str("load"), str("nominal"))],
+            action: None,
+        }
+        .check("bree", "db", &map, "read"));
+
+        // test target action
+        assert!(TargetCheck {
+            name: Some(StringCheck::Is(str("bree"))),
+            typestr: Some(StringCheck::Is(str("db"))),
+            attributes: vec![KvCheck::Has(str("env"), str("test"))],
+            action: Some(StringCheck::Is(str("read"))),
+        }
+        .check("bree", "db", &map, "read"));
+        assert!(!TargetCheck {
+            name: Some(StringCheck::Is(str("bree"))),
+            typestr: Some(StringCheck::Is(str("db"))),
+            attributes: vec![KvCheck::Has(str("env"), str("test"))],
+            action: Some(StringCheck::Is(str("write"))),
+        }
+        .check("bree", "db", &map, "read"));
+    }
+}

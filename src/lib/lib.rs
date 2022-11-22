@@ -111,6 +111,14 @@ pub mod proto {
     }
 }
 
+/// Specify the type of persistent backend to use
+pub enum StorageType {
+    /// indicates no backend should be used, useful for unit tests
+    Nil,
+    /// indicates a file backend should be used at the given path
+    FileSystem(String),
+}
+
 pub(crate) mod ds;
 pub(crate) mod entity;
 pub(crate) mod group;

@@ -490,7 +490,7 @@ pub async fn run_server() {
         .arg("--bin")
         .arg("gatehouse-server")
         .kill_on_drop(true)
-        .stdout(Stdio::inherit())
+        .stdout(Stdio::null())
         .spawn()
         .expect("Could not start server")
         .wait()

@@ -9,9 +9,10 @@ use crate::role::RegisteredRole;
 use crate::target::RegisteredTarget;
 
 pub(crate) mod file;
+pub(crate) mod nil;
 
 #[async_trait]
-pub(crate) trait Backend {
+pub(crate) trait Storage {
     async fn save_target(&self, tgt: &RegisteredTarget) -> Result<(), String>;
     async fn remove_target(&self, tgt: &RegisteredTarget) -> Result<(), String>;
     async fn load_targets(

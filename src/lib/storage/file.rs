@@ -8,7 +8,7 @@ use crate::policy::RegisteredPolicyRule;
 use crate::role::RegisteredRole;
 use crate::target::RegisteredTarget;
 
-use super::Backend;
+use super::Storage;
 
 pub(crate) struct FileStorage {
     basepath: String,
@@ -43,7 +43,7 @@ impl FileStorage {
 }
 
 #[async_trait]
-impl Backend for FileStorage {
+impl Storage for FileStorage {
     async fn save_target(&self, tgt: &RegisteredTarget) -> Result<(), String> {
         let target_path = format!(
             "{}/targets/{}-{}.json",
