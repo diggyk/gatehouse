@@ -1,10 +1,33 @@
 syntax = "proto3";
 package gatehouse;
 
+import "common.proto";
 import "entities.proto";
 import "groups.proto";
+import "policies.proto";
 import "roles.proto";
 import "targets.proto";
+
+/// A request to see if an entity can take an action on a target
+message CheckRequest {
+    // the entity to be checked
+    entities.Entity entity = 1;
+    // environment attributes
+    map<string, common.AttributeValues> env_attributes = 2;
+
+    // the name of target to check against
+    string target_name = 3;
+    // the type of target to check against
+    string target_type = 4;
+    // the action to check against
+    string target_action = 5;
+}
+
+/// The response to a check request
+message CheckResponse {
+    // the decision made on the check
+    policies.DECIDE decision = 1;
+}
 
 /** The main Gatehouse server */
 service Gatehouse {
@@ -56,4 +79,21 @@ service Gatehouse {
 
     // get all groups (or with filters)
     rpc GetGroups (groups.GetAllGroupsRequest) returns (groups.MultiGroupResponse);
+
+    /** POLICIES */
+    // add a new policy
+    rpc AddPolicy (policies.AddPolicyRequest) returns (policies.PolicyResponse);
+
+    // modify an existing policy
+    rpc ModifyPolicy (policies.ModifyPolicyRequest) returns (policies.PolicyResponse);
+
+    // remove an existing policy
+    rpc RemovePolicy (policies.RemovePolicyRequest) returns (policies.PolicyResponse);
+
+    // get policies
+    rpc GetPolicies (policies.GetPoliciesRequest) returns (policies.MultiPolicyResponse);
+
+    /** DECISIONS */
+    // get a decision on a target's attempt to use a target
+    rpc check (CheckRequest) returns (CheckResponse);
 }

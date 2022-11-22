@@ -53,6 +53,19 @@ pub mod proto {
         }
     }
 
+    /// Protobufs for policies
+    pub mod policies {
+        use std::fmt::Display;
+
+        tonic::include_proto!("policies");
+
+        impl Display for PolicyRule {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "policy[{}]", self.name)
+            }
+        }
+    }
+
     /// Role related protobufs
     pub mod roles {
         use std::fmt::Display;
@@ -98,10 +111,19 @@ pub mod proto {
     }
 }
 
+/// Specify the type of persistent backend to use
+pub enum StorageType {
+    /// indicates no backend should be used, useful for unit tests
+    Nil,
+    /// indicates a file backend should be used at the given path
+    FileSystem(String),
+}
+
 pub(crate) mod ds;
 pub(crate) mod entity;
 pub(crate) mod group;
 pub(crate) mod msgs;
+pub(crate) mod policy;
 pub(crate) mod role;
 pub(crate) mod storage;
 pub mod svc;

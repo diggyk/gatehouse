@@ -2,15 +2,18 @@ mod common;
 
 use std::time::Duration;
 
-use common::get_roles;
+use common::{add_policy, get_roles};
+use gatehouse::proto::policies::{
+    Cmp, Decide, EntityCheck, KvCheck, Num, NumberCheck, Set, StringCheck,
+};
 use tokio::test;
 
 use gatehouse::proto::base::gatehouse_client::GatehouseClient;
 
 use crate::common::{
-    add_entity, add_group, add_role, add_target, get_entities, get_groups, get_targets,
-    modify_entity, modify_group, modify_target, remove_entity, remove_group, remove_role,
-    remove_target, str,
+    add_entity, add_group, add_role, add_target, get_entities, get_groups, get_policies,
+    get_targets, modify_entity, modify_group, modify_policy, modify_target, remove_entity,
+    remove_group, remove_policy, remove_role, remove_target, str,
 };
 
 #[test]
@@ -22,6 +25,7 @@ async fn test_crud() {
     test_entities().await;
     test_roles().await;
     test_groups().await;
+    test_polices().await;
 }
 
 async fn test_targets() {
@@ -432,4 +436,100 @@ async fn test_groups() {
     assert_eq!(grp2[0].name, "customers");
     assert_eq!(grp2[0].roles.len(), 1);
     assert!(!grp2[0].roles.iter().any(|r| r == "user"));
+}
+
+async fn test_polices() {
+    let mut client = GatehouseClient::connect("http://localhost:6174")
+        .await
+        .expect("could not create client");
+
+    let pol1 = add_policy(
+        &mut client,
+        "allow-admins",
+        None,
+        Some(EntityCheck {
+            name: None,
+            typestr: Some(StringCheck {
+                val_cmp: Cmp::Is.into(),
+                val: str("user"),
+            }),
+            attributes: vec![KvCheck {
+                key: str("role"),
+                op: Set::Has.into(),
+                val: str("admin"),
+            }],
+            bucket: None,
+        }),
+        vec![],
+        None,
+        Decide::Pass,
+    )
+    .await;
+
+    assert_eq!(pol1.name, "allow-admins");
+    assert_eq!(pol1.decision(), Decide::Pass);
+    assert_eq!(pol1.entity_check.unwrap_or_default().bucket, None);
+
+    let pol1 = modify_policy(
+        &mut client,
+        "allow-admins",
+        None,
+        Some(EntityCheck {
+            name: None,
+            typestr: Some(StringCheck {
+                val_cmp: Cmp::Is.into(),
+                val: str("user"),
+            }),
+            attributes: vec![KvCheck {
+                key: str("role"),
+                op: Set::Has.into(),
+                val: str("admin"),
+            }],
+            bucket: Some(NumberCheck {
+                op: Num::LessThan.into(),
+                val: 50,
+            }),
+        }),
+        vec![],
+        None,
+        Decide::Fail,
+    )
+    .await;
+
+    assert_eq!(pol1.name, "allow-admins");
+    assert_eq!(pol1.decision(), Decide::Fail);
+    assert_eq!(
+        pol1.clone()
+            .entity_check
+            .unwrap_or_default()
+            .bucket
+            .unwrap_or_default()
+            .val,
+        50
+    );
+
+    let _ = add_policy(
+        &mut client,
+        "allow-everyone",
+        None,
+        None,
+        vec![],
+        None,
+        Decide::Pass,
+    )
+    .await;
+
+    let pols = get_policies(&mut client, None, None, vec![], None).await;
+    assert_eq!(pols.len(), 2);
+
+    let pol_found = get_policies(&mut client, Some("allow-admins"), None, vec![], None).await;
+    assert_eq!(pol_found.len(), 1);
+    assert_eq!(pol1, pol_found[0]);
+
+    let pol_removed = remove_policy(&mut client, "allow-admins").await;
+    assert_eq!(pol1, pol_removed);
+
+    let pols = get_policies(&mut client, None, None, vec![], None).await;
+    assert_eq!(pols.len(), 1);
+    assert_eq!(pols[0].name, "allow-everyone");
 }

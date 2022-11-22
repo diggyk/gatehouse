@@ -3,6 +3,7 @@
 //! The Entity type and methods
 
 use core::hash::Hash;
+use fasthash::metro;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
@@ -35,8 +36,8 @@ impl Hash for RegisteredEntity {
 impl From<Entity> for RegisteredEntity {
     fn from(tgt: Entity) -> Self {
         let mut attributes = HashMap::new();
-        for kv in tgt.attributes {
-            attributes.insert(kv.0, HashSet::from_iter(kv.1.values));
+        for (key, val) in tgt.attributes {
+            attributes.insert(key, HashSet::from_iter(val.values));
         }
 
         Self {
@@ -50,11 +51,11 @@ impl From<Entity> for RegisteredEntity {
 impl From<RegisteredEntity> for Entity {
     fn from(entity: RegisteredEntity) -> Self {
         let mut attributes = HashMap::new();
-        for kv in entity.attributes {
+        for (key, val) in entity.attributes {
             attributes.insert(
-                kv.0,
+                key,
                 AttributeValues {
-                    values: kv.1.iter().map(|v| v.to_string()).collect(),
+                    values: val.iter().map(|v| v.to_string()).collect(),
                 },
             );
         }
@@ -108,5 +109,11 @@ impl RegisteredEntity {
             typestr: typestr.to_string(),
             attributes,
         }
+    }
+
+    /// calculate the bucket for this entry
+    pub(crate) fn bucket(&self) -> u8 {
+        let hash = metro::hash64(format!("{}/{}", self.typestr, self.name));
+        (hash % 100).try_into().unwrap()
     }
 }

@@ -8,6 +8,7 @@ use tonic::{Request, Response, Status};
 use crate::ds::Datastore;
 use crate::msgs::{DsRequest, DsResponse};
 use crate::proto::base::gatehouse_server::Gatehouse;
+use crate::proto::base::{CheckRequest, CheckResponse};
 use crate::proto::entities::{
     AddEntityRequest, EntityResponse, GetAllEntitiesRequest, ModifyEntityRequest,
     MultiEntityResponse, RemoveEntityRequest,
@@ -16,6 +17,10 @@ use crate::proto::groups::{
     AddGroupRequest, GetAllGroupsRequest, GroupResponse, ModifyGroupRequest, MultiGroupResponse,
     RemoveGroupRequest,
 };
+use crate::proto::policies::{
+    AddPolicyRequest, GetPoliciesRequest, ModifyPolicyRequest, MultiPolicyResponse, PolicyResponse,
+    RemovePolicyRequest,
+};
 use crate::proto::roles::{
     AddRoleRequest, GetAllRolesRequest, MultiRoleResponse, RemoveRoleRequest, RoleResponse,
 };
@@ -23,6 +28,7 @@ use crate::proto::targets::{
     AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, MultiTargetResponse,
     RemoveTargetRequest, TargetResponse,
 };
+use crate::StorageType;
 
 #[derive(Debug)]
 /// The core Gatehouse server
@@ -33,7 +39,7 @@ pub struct GatehouseSvc {
 impl GatehouseSvc {
     /// Create a new Gatehouse service
     pub async fn new() -> Self {
-        let dstx = Datastore::create().await;
+        let dstx = Datastore::create(StorageType::FileSystem("/tmp/gatehouse".to_string())).await;
         GatehouseSvc { dstx }
     }
 }
@@ -425,6 +431,130 @@ impl Gatehouse for GatehouseSvc {
             }
             DsResponse::Error(status) => return Err(status),
             _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /// Add policy
+    async fn add_policy(
+        &self,
+        request: Request<AddPolicyRequest>,
+    ) -> Result<Response<PolicyResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        match self
+            .call_datastore(DsRequest::AddPolicy(req.clone(), tx), "add policy", rx)
+            .await?
+        {
+            DsResponse::SinglePolicy(rule) => {
+                //TODO! -- add metrics
+                println!("Added policy rule {}", rule);
+                return Ok(Response::new(PolicyResponse { rule: Some(rule) }));
+            }
+            DsResponse::Error(status) => return Err(status),
+            _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /// Modify policy
+    async fn modify_policy(
+        &self,
+        request: Request<ModifyPolicyRequest>,
+    ) -> Result<Response<PolicyResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        match self
+            .call_datastore(
+                DsRequest::ModifyPolicy(req.clone(), tx),
+                "modify policy",
+                rx,
+            )
+            .await?
+        {
+            DsResponse::SinglePolicy(rule) => {
+                //TODO! -- add metrics
+                println!("Modified policy rule {}", rule);
+                return Ok(Response::new(PolicyResponse { rule: Some(rule) }));
+            }
+            DsResponse::Error(status) => return Err(status),
+            _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /// Remove policy
+    async fn remove_policy(
+        &self,
+        request: Request<RemovePolicyRequest>,
+    ) -> Result<Response<PolicyResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        match self
+            .call_datastore(
+                DsRequest::RemovePolicy(req.clone(), tx),
+                "remove policy",
+                rx,
+            )
+            .await?
+        {
+            DsResponse::SinglePolicy(rule) => {
+                //TODO! -- add metrics
+                println!("Removed policy rule {}", rule);
+                return Ok(Response::new(PolicyResponse { rule: Some(rule) }));
+            }
+            DsResponse::Error(status) => return Err(status),
+            _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /// Get policies based on filters
+    async fn get_policies(
+        &self,
+        request: Request<GetPoliciesRequest>,
+    ) -> Result<Response<MultiPolicyResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        match self
+            .call_datastore(DsRequest::GetPolicies(req.clone(), tx), "get policies", rx)
+            .await?
+        {
+            DsResponse::MultiplePolicies(rules) => {
+                //TODO! -- add metrics
+                println!("Got {} policies", rules.len());
+                return Ok(Response::new(MultiPolicyResponse { rules }));
+            }
+            DsResponse::Error(status) => return Err(status),
+            _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /// Make a decision an entity wanting to take an action on a target
+    async fn check(
+        &self,
+        request: Request<CheckRequest>,
+    ) -> Result<Response<CheckResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        if req.entity.is_none() {
+            return Err(Status::invalid_argument("Entity cannot be null"));
+        }
+
+        match self
+            .call_datastore(DsRequest::Check(req.clone(), tx), "perform check", rx)
+            .await?
+        {
+            DsResponse::CheckResult(decision) => {
+                //TODO! -- add metrics
+                println!("Got decision: {}", decision);
+                Ok(Response::new(CheckResponse {
+                    decision: decision.into(),
+                }))
+            }
+            DsResponse::Error(status) => Err(status),
+            _ => Err(Status::internal("Got unexpected answer from datastore")),
         }
     }
 }

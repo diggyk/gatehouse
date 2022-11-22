@@ -74,7 +74,10 @@ Gatehouse then evaluates this request against the known policies for that `targe
 - [x] CRUD Groups and Group membership
 - [x] CRUD Roles
 - [ ] CRUD Policies
+- [x] Integration test
 - [ ] Policy engine
+- [ ] gRPC validation
+- [ ] Unit tests
 
 # Additional ToDos
 

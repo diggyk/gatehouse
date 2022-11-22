@@ -10,6 +10,10 @@ use gatehouse::proto::groups::{
     AddGroupRequest, GetAllGroupsRequest, Group, GroupMember, ModifyGroupRequest,
     RemoveGroupRequest,
 };
+use gatehouse::proto::policies::{
+    AddPolicyRequest, Decide, EntityCheck, GetPoliciesRequest, KvCheck, ModifyPolicyRequest,
+    PolicyRule, RemovePolicyRequest, TargetCheck,
+};
 use gatehouse::proto::roles::{AddRoleRequest, GetAllRolesRequest, RemoveRoleRequest, Role};
 use tokio::fs::read_dir;
 use tokio::process::Command;
@@ -355,6 +359,96 @@ pub async fn get_groups(
         .groups
 }
 
+/// Add a policy
+pub async fn add_policy(
+    client: &mut GatehouseClient<Channel>,
+    name: &str,
+    desc: Option<&str>,
+    entity_check: Option<EntityCheck>,
+    env_attributes: Vec<KvCheck>,
+    target_check: Option<TargetCheck>,
+    decision: Decide,
+) -> PolicyRule {
+    let rule = PolicyRule {
+        name: name.to_string(),
+        desc: desc.map(String::from),
+        entity_check,
+        env_attributes,
+        target_check,
+        decision: decision.into(),
+    };
+    client
+        .add_policy(AddPolicyRequest { rule: Some(rule) })
+        .await
+        .expect("Failed to add policy")
+        .into_inner()
+        .rule
+        .expect("No policy returned after creation")
+}
+
+/// Modify/replace an existing policy
+pub async fn modify_policy(
+    client: &mut GatehouseClient<Channel>,
+    name: &str,
+    desc: Option<&str>,
+    entity_check: Option<EntityCheck>,
+    env_attributes: Vec<KvCheck>,
+    target_check: Option<TargetCheck>,
+    decision: Decide,
+) -> PolicyRule {
+    let rule = PolicyRule {
+        name: name.to_string(),
+        desc: desc.map(String::from),
+        entity_check,
+        env_attributes,
+        target_check,
+        decision: decision.into(),
+    };
+    client
+        .modify_policy(ModifyPolicyRequest { rule: Some(rule) })
+        .await
+        .expect("Failed to modify policy")
+        .into_inner()
+        .rule
+        .expect("No policy returned after update")
+}
+
+/// Remove an existing policy
+pub async fn remove_policy(client: &mut GatehouseClient<Channel>, name: &str) -> PolicyRule {
+    client
+        .remove_policy(RemovePolicyRequest {
+            name: name.to_string(),
+        })
+        .await
+        .expect("Failed to remove policy")
+        .into_inner()
+        .rule
+        .expect("No policy returned after removal")
+}
+
+/// Search for policies
+pub async fn get_policies(
+    client: &mut GatehouseClient<Channel>,
+    name: Option<&str>,
+    entity_check: Option<EntityCheck>,
+    env_attributes: Vec<KvCheck>,
+    target_check: Option<TargetCheck>,
+) -> Vec<PolicyRule> {
+    let req = GetPoliciesRequest {
+        name: name.map(String::from),
+        entity_check,
+        env_attributes,
+        target_check,
+    };
+
+    client
+        .get_policies(req)
+        .await
+        .expect("Failed to get policies")
+        .into_inner()
+        .rules
+}
+
 #[async_recursion]
 async fn clear_dir(path: &str) {
     let dir = read_dir(path).await;
@@ -396,7 +490,7 @@ pub async fn run_server() {
         .arg("--bin")
         .arg("gatehouse-server")
         .kill_on_drop(true)
-        .stdout(Stdio::inherit())
+        .stdout(Stdio::null())
         .spawn()
         .expect("Could not start server")
         .wait()

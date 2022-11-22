@@ -2,6 +2,7 @@
 
 //! The datastore holds all the policies, targets, and internal PIP data
 
+use flume::Receiver;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::oneshot::Sender;
 use tonic::Status;
@@ -9,11 +10,18 @@ use tonic::Status;
 use crate::entity::RegisteredEntity;
 use crate::group::{RegisteredGroup, RegisteredGroupMember};
 use crate::msgs::{DsRequest, DsResponse};
+use crate::policy::{Decide, RegisteredPolicyRule};
+use crate::proto::base::CheckRequest;
+use crate::StorageType;
+
 use crate::proto::entities::{
     AddEntityRequest, Entity, GetAllEntitiesRequest, ModifyEntityRequest, RemoveEntityRequest,
 };
 use crate::proto::groups::{
     AddGroupRequest, GetAllGroupsRequest, ModifyGroupRequest, RemoveGroupRequest,
+};
+use crate::proto::policies::{
+    AddPolicyRequest, GetPoliciesRequest, ModifyPolicyRequest, PolicyRule, RemovePolicyRequest,
 };
 use crate::proto::roles::{AddRoleRequest, GetAllRolesRequest, RemoveRoleRequest, Role};
 use crate::proto::targets::{
@@ -21,11 +29,13 @@ use crate::proto::targets::{
 };
 use crate::role::RegisteredRole;
 use crate::storage::file::FileStorage;
+use crate::storage::nil::NilStorage;
+use crate::storage::Storage;
 use crate::target::RegisteredTarget;
 
 pub struct Datastore {
     rx: flume::Receiver<DsRequest>,
-    backend: FileStorage,
+    backend: Box<dyn Storage + Send + Sync>,
 
     /// HashMap from type string to HashMap of name to registered target
     targets: HashMap<String, HashMap<String, RegisteredTarget>>,
@@ -38,12 +48,17 @@ pub struct Datastore {
 
     /// HashMap of name to registered group
     groups: HashMap<String, RegisteredGroup>,
+
+    /// HashMap of name to registered policy
+    policies: HashMap<String, RegisteredPolicyRule>,
 }
 
 impl Datastore {
-    pub(crate) async fn create() -> flume::Sender<DsRequest> {
-        let (tx, rx) = flume::unbounded();
-        let backend = FileStorage::new("/tmp/gatehouse").await;
+    async fn new(backend: StorageType, rx: Receiver<DsRequest>) -> Self {
+        let backend: Box<dyn Storage + Send + Sync> = match backend {
+            StorageType::FileSystem(path) => Box::new(FileStorage::new(&path).await),
+            StorageType::Nil => Box::new(NilStorage {}),
+        };
 
         let targets = backend
             .load_targets()
@@ -65,15 +80,26 @@ impl Datastore {
             .await
             .expect("Could not load groups from backend");
 
-        let mut ds = Datastore {
+        let policies = backend
+            .load_policies()
+            .await
+            .expect("Could not load policies from backend");
+
+        Datastore {
             rx,
             backend,
             targets,
             entities,
             roles,
             groups,
-        };
+            policies,
+        }
+    }
 
+    /// How the datastore is actually created, returning only the sender channel
+    pub(crate) async fn create(backend: StorageType) -> flume::Sender<DsRequest> {
+        let (tx, rx) = flume::unbounded();
+        let mut ds = Self::new(backend, rx).await;
         tokio::spawn(async move {
             ds.run().await;
         });
@@ -104,8 +130,17 @@ impl Datastore {
                 DsRequest::ModifyGroup(req, tx) => self.modify_group(req, tx).await,
                 DsRequest::RemoveGroup(req, tx) => self.remove_group(req, tx).await,
                 DsRequest::GetGroups(req, tx) => self.get_groups(req, tx).await,
+                // POLICIES
+                DsRequest::AddPolicy(req, tx) => self.add_policy(req, tx).await,
+                DsRequest::ModifyPolicy(req, tx) => self.modify_policy(req, tx).await,
+                DsRequest::RemovePolicy(req, tx) => self.remove_policy(req, tx).await,
+                DsRequest::GetPolicies(req, tx) => self.get_policies(req, tx).await,
+                // CHECKS
+                DsRequest::Check(req, tx) => self.check(req, tx).await,
             }
         }
+
+        println!("Datastore shutdown");
     }
 
     /// Add a new target
@@ -526,7 +561,7 @@ impl Datastore {
         }
 
         // try to remove the new role to the backend and if that succeeds, update it in memory
-        match self.backend.remove_role(&existing_role).await {
+        match self.backend.remove_role(&existing_role.name).await {
             Ok(_) => {
                 let _ = self.roles.remove(&role);
             }
@@ -574,6 +609,17 @@ impl Datastore {
     /// because it is perfectly legal to have members of groups that will be expressed externally
     async fn add_group(&mut self, req: AddGroupRequest, tx: Sender<DsResponse>) {
         let name = req.name.to_ascii_lowercase();
+
+        // if entity already exists, return an error
+        if self.groups.contains_key(&name) {
+            println!("Group already exists: {}", name);
+
+            // TODO! -- do something with error
+            let _ = tx.send(DsResponse::Error(Status::already_exists(
+                "Role already exists",
+            )));
+            return;
+        }
 
         let members: HashSet<RegisteredGroupMember> =
             req.members.iter().map(|m| m.clone().into()).collect();
@@ -747,7 +793,7 @@ impl Datastore {
         }
 
         // try to delete the group first and then if that works, update the roles and persist them
-        if let Err(err) = self.backend.remove_group(&existing_group).await {
+        if let Err(err) = self.backend.remove_group(&existing_group.name).await {
             // TODO! -- do something with error
             let _ = tx.send(DsResponse::Error(Status::internal(err)));
             return;
@@ -798,4 +844,335 @@ impl Datastore {
 
         let _ = tx.send(DsResponse::MultipleGroups(found_groups));
     }
+
+    /// Add a policy if new
+    async fn add_policy(&mut self, req: AddPolicyRequest, tx: Sender<DsResponse>) {
+        let rule = match req.rule {
+            None => {
+                let _ = tx.send(DsResponse::Error(Status::invalid_argument(
+                    "No rule in request",
+                )));
+                return;
+            }
+            Some(rule) => rule,
+        };
+
+        let name = rule.name.to_ascii_lowercase();
+
+        // if policy rule already exists, return an error
+        if self.roles.contains_key(&name) {
+            println!("Policy rule already exists: {}", name);
+
+            // TODO! -- do something with error
+            let _ = tx.send(DsResponse::Error(Status::already_exists(
+                "Policy rule already exists",
+            )));
+            return;
+        }
+
+        let new_policy: RegisteredPolicyRule = rule.clone().into();
+
+        // try to persist the new policy to the backend and if that succeeds, update it in memory
+        match self.backend.save_policy(&new_policy).await {
+            Ok(_) => {
+                let _ = self.policies.insert(name.clone(), new_policy.clone());
+            }
+            Err(err) => {
+                // TODO! -- do something with error
+                let _ = tx.send(DsResponse::Error(Status::internal(err)));
+                return;
+            }
+        }
+
+        let _ = tx.send(DsResponse::SinglePolicy(new_policy.into()));
+    }
+
+    /// Update an existing policy
+    async fn modify_policy(&mut self, req: ModifyPolicyRequest, tx: Sender<DsResponse>) {
+        let rule = match req.rule {
+            None => {
+                let _ = tx.send(DsResponse::Error(Status::invalid_argument(
+                    "No rule in request",
+                )));
+                return;
+            }
+            Some(rule) => rule,
+        };
+
+        let name = rule.name.to_ascii_lowercase();
+
+        // if policy rule does not exist, return an error
+        if !self.policies.contains_key(&name) {
+            println!("Policy rule not found: {}", name);
+
+            // TODO! -- do something with error
+            let _ = tx.send(DsResponse::Error(Status::not_found(
+                "Policy rule does not exist",
+            )));
+            return;
+        }
+
+        let updated_policy: RegisteredPolicyRule = rule.clone().into();
+
+        // try to persist the new policy to the backend and if that succeeds, update it in memory
+        match self.backend.save_policy(&updated_policy).await {
+            Ok(_) => {
+                let _ = self.policies.insert(name.clone(), updated_policy.clone());
+            }
+            Err(err) => {
+                // TODO! -- do something with error
+                let _ = tx.send(DsResponse::Error(Status::internal(err)));
+                return;
+            }
+        }
+
+        let _ = tx.send(DsResponse::SinglePolicy(updated_policy.into()));
+    }
+
+    /// Remove an existing policy
+    async fn remove_policy(&mut self, req: RemovePolicyRequest, tx: Sender<DsResponse>) {
+        let name = req.name.to_ascii_lowercase();
+
+        // if policy rule does not exist, return an error
+        if !self.policies.contains_key(&name) {
+            println!("Policy rule not found: {}", name);
+
+            // TODO! -- do something with error
+            let _ = tx.send(DsResponse::Error(Status::not_found(
+                "Policy rule does not exist",
+            )));
+            return;
+        }
+
+        let existing_policy = self.policies.get(&name).unwrap().to_owned();
+
+        // try to remove the policy from backend before updating memory
+        match self.backend.remove_policy(&name).await {
+            Ok(_) => {
+                let _ = self.policies.remove(&name);
+            }
+            Err(err) => {
+                // TODO! -- do something with error
+                let _ = tx.send(DsResponse::Error(Status::internal(err)));
+                return;
+            }
+        }
+
+        let _ = tx.send(DsResponse::SinglePolicy(existing_policy.into()));
+    }
+
+    /// Get policies based on filters
+    async fn get_policies(&mut self, req: GetPoliciesRequest, tx: Sender<DsResponse>) {
+        let mut policies: Vec<PolicyRule> = Vec::new();
+
+        let req_name = req.name.map(|n| n.to_ascii_lowercase());
+        for (name, policy) in self.policies.iter() {
+            // see if name matches if a name filter was given
+            if let Some(ref req_name) = req_name {
+                if name != req_name {
+                    continue;
+                }
+            }
+
+            // see if entity check matches if entity check filter was given
+            if req.entity_check.is_some() {
+                // NOT IMPLEMENTED
+                let _ = tx.send(DsResponse::Error(Status::unimplemented(
+                    "Filter by entity check not implemented",
+                )));
+                return;
+            }
+
+            // see if env attributes match
+            if !req.env_attributes.is_empty() {
+                // NOT IMPLEMENTED
+                let _ = tx.send(DsResponse::Error(Status::unimplemented(
+                    "Filter by environment attribute checks is not implemented",
+                )));
+                return;
+            }
+
+            // see if target check matches if target check filter was given
+            if req.target_check.is_some() {
+                // NOT IMPLEMENTED
+                let _ = tx.send(DsResponse::Error(Status::unimplemented(
+                    "Filter by target check not implemented",
+                )));
+                return;
+            }
+
+            policies.push(policy.to_owned().into());
+        }
+
+        let _ = tx.send(DsResponse::MultiplePolicies(policies));
+    }
+
+    /// Perform a check
+    ///
+    /// We will receive an entity (type and name) and a list of attributes that the policy
+    /// enforcement point (PEP) wants to share about the entity. PEP may also share environment
+    /// attributes in the form of key/val pairs (vals are a list). Finally, the PEP will specify
+    /// the target (name and type) and action to be checked against the policies. DS will evaluate
+    /// against known policy rules and decide on a PASS/FAIL decision.
+    ///
+    /// The entity may match a registered entity, in which case, we'll add some more attributes if
+    /// we have them. The entity may also belong to a group which has been granted some roles.
+    /// In that case, we will add "member-of" attributes for each group, and "has-role" attributes
+    /// for each role. Lastly, we will determine a bucket (between 0-99) using the murmur3 algo
+    async fn check(&mut self, req: CheckRequest, tx: Sender<DsResponse>) {
+        let entity: RegisteredEntity = self.extend_entity(req.entity.unwrap());
+        let mut env_attributes = HashMap::new();
+        for (key, vals) in req.env_attributes {
+            env_attributes.insert(key, HashSet::from_iter(vals.values));
+        }
+
+        // get any known attributes about the target
+        let target_attributes = self.get_target_attributes(&req.target_name, &req.target_type);
+
+        // TODO -- refactor the policy store to make applicable polices quicker to find
+        // Examine every policy -- if the entity check, environment check, and target check's pass
+        // then we can make a determination. If we get an explicit DENY from any rule, we exit
+        // immediately.
+        let mut decision = Decide::Fail;
+        for (_, policy) in self.policies.iter() {
+            if let Some(ref entity_check) = policy.entity_check {
+                if !entity_check.check(&entity) {
+                    // this entity check does not apply to this request
+                    continue;
+                }
+            }
+
+            // perform environment check
+            if !policy
+                .env_attributes
+                .iter()
+                .all(|ea| ea.check(&env_attributes))
+            {
+                // these environment checks do not match
+                continue;
+            }
+
+            if let Some(ref target_check) = policy.target_check {
+                if !target_check.check(
+                    &req.target_name,
+                    &req.target_type,
+                    &target_attributes,
+                    &req.target_action,
+                ) {
+                    // this target does not match
+                    continue;
+                }
+            }
+
+            // all conditions must match; take decision
+            decision = policy.decision.clone();
+            if let Decide::Fail = decision {
+                break;
+            }
+        }
+
+        let _ = tx.send(DsResponse::CheckResult(decision.into()));
+    }
+
+    /** HELPERS */
+    /// Extend a given entity with additional attributes
+    ///
+    /// Given an entity, build a registered entity with any additional attributes from a
+    /// known entity, as well as any group/roles we might have.
+    fn extend_entity(&self, passed_entity: Entity) -> RegisteredEntity {
+        let mut entity: RegisteredEntity = RegisteredEntity::from(passed_entity);
+        let typed_entities = self.entities.get(&entity.typestr);
+
+        // extend attributes if we know about this entity
+        if let Some(typed_entities) = typed_entities {
+            if let Some(found_entity) = typed_entities.get(&entity.name).map(|e| e.to_owned()) {
+                entity
+                    .attributes
+                    .extend(found_entity.attributes.into_iter());
+            }
+        }
+
+        // check groups
+        // create a representation of this entity as a RegisteredGroupMember so we can
+        let entity_as_member = RegisteredGroupMember::from(&entity);
+        for group in self.groups.values() {
+            if group.members.contains(&entity_as_member) {
+                entity
+                    .attributes
+                    .entry("member-of".to_string())
+                    .or_default()
+                    .insert(group.name.clone());
+
+                entity
+                    .attributes
+                    .entry("has-role".to_string())
+                    .or_default()
+                    .extend(group.roles.clone());
+            }
+        }
+
+        entity
+    }
+
+    /// Return attributes for a target if known
+    fn get_target_attributes(&self, name: &str, typestr: &str) -> HashMap<String, HashSet<String>> {
+        let typed_targets = self.targets.get(typestr);
+
+        if let Some(typed_targets) = typed_targets {
+            if let Some(found_target) = typed_targets.get(name) {
+                return found_target.attributes.clone();
+            }
+        }
+
+        HashMap::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::sync::oneshot::channel;
+    use tokio::test;
+
+    use crate::proto::common::AttributeValues;
+
+    use super::*;
+
+    fn str(val: &str) -> String {
+        String::from(val)
+    }
+
+    #[test]
+    async fn test_targets() {
+        let (_, rx) = flume::unbounded();
+        let (tx, _) = channel::<DsResponse>();
+        let mut ds = Datastore::new(StorageType::Nil, rx).await;
+
+        let mut map: HashMap<String, AttributeValues> = HashMap::new();
+        map.insert(
+            str("role"),
+            AttributeValues {
+                values: vec![str("main"), str("backup")],
+            },
+        );
+        map.insert(
+            str("env"),
+            AttributeValues {
+                values: vec![str("test")],
+            },
+        );
+
+        let req = AddTargetRequest {
+            name: str("test"),
+            typestr: str("typetest"),
+            actions: vec![str("action1"), str("action2")],
+            attributes: map,
+        };
+        ds.add_target(req, tx).await;
+
+        assert_eq!(ds.targets.len(), 1);
+        assert!(ds.targets.contains_key("typetest"));
+        assert!(ds.targets.get("typetest").unwrap().contains_key("test"));
+    }
+
+    // TODO! -- add more unit tests
 }
