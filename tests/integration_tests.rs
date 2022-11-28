@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use common::{add_policy, get_roles};
 use gatehouse::proto::policies::{
-    Decide, EntityCheck, KvCheck, Num, NumberCheck, Set, StringCheck,
+    Decide, EntityCheck, KvCheck, Num, NumberCheck, Set, StringCheck, TargetCheck,
 };
 use tokio::test;
 
@@ -462,12 +462,12 @@ async fn test_polices() {
         }),
         vec![],
         None,
-        Decide::Pass,
+        Decide::Allow,
     )
     .await;
 
     assert_eq!(pol1.name, "allow-admins");
-    assert_eq!(pol1.decision(), Decide::Pass);
+    assert_eq!(pol1.decision(), Decide::Allow);
     assert_eq!(pol1.entity_check.unwrap_or_default().bucket, None);
 
     let pol1 = modify_policy(
@@ -492,12 +492,12 @@ async fn test_polices() {
         }),
         vec![],
         None,
-        Decide::Fail,
+        Decide::Deny,
     )
     .await;
 
     assert_eq!(pol1.name, "allow-admins");
-    assert_eq!(pol1.decision(), Decide::Fail);
+    assert_eq!(pol1.decision(), Decide::Deny);
     assert_eq!(
         pol1.clone()
             .entity_check
@@ -515,7 +515,7 @@ async fn test_polices() {
         None,
         vec![],
         None,
-        Decide::Pass,
+        Decide::Allow,
     )
     .await;
 
@@ -546,20 +546,48 @@ async fn test_polices() {
                 val_cmp: Set::Has.into(),
                 vals: vec![str("user")],
             }),
-            attributes: vec![KvCheck {
-                key: str("role"),
-                op: Set::Has.into(),
-                vals: vec![str("admin")],
-            }],
-            bucket: None,
+            attributes: vec![
+                KvCheck {
+                    key: str("role"),
+                    op: Set::Has.into(),
+                    vals: vec![str("admin")],
+                },
+                KvCheck {
+                    key: str("role"),
+                    op: Set::HasNot.into(),
+                    vals: vec![str("manager"), str("exec")],
+                },
+            ],
+            bucket: Some(NumberCheck {
+                op: Num::LessThan.into(),
+                val: 50,
+            }),
         }),
         vec![KvCheck {
             key: str("env"),
             op: Set::Has.into(),
             vals: vec![str("prod")],
         }],
-        None,
-        Decide::Pass,
+        Some(TargetCheck {
+            name: Some(StringCheck {
+                val_cmp: Set::Has.into(),
+                vals: vec![str("launchctl"), str("abortctl")],
+            }),
+            typestr: Some(StringCheck {
+                val_cmp: Set::Has.into(),
+                vals: vec![str("svc"), str("api"), str("ui")],
+            }),
+            attributes: vec![KvCheck {
+                key: str("release"),
+                op: Set::Has.into(),
+                vals: vec![str("stable"), str("canary")],
+            }],
+            action: Some(StringCheck {
+                val_cmp: Set::Has.into(),
+                vals: vec![str("engage"), str("check"), str("read")],
+            }),
+        }),
+        Decide::Allow,
     )
     .await;
 

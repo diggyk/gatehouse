@@ -986,7 +986,7 @@ impl Datastore {
     /// enforcement point (PEP) wants to share about the entity. PEP may also share environment
     /// attributes in the form of key/val pairs (vals are a list). Finally, the PEP will specify
     /// the target (name and type) and action to be checked against the policies. DS will evaluate
-    /// against known policy rules and decide on a PASS/FAIL decision.
+    /// against known policy rules and decide on a ALLOW/DENY decision.
     ///
     /// The entity may match a registered entity, in which case, we'll add some more attributes if
     /// we have them. The entity may also belong to a group which has been granted some roles.
@@ -1006,7 +1006,7 @@ impl Datastore {
         // Examine every policy -- if the entity check, environment check, and target check's pass
         // then we can make a determination. If we get an explicit DENY from any rule, we exit
         // immediately.
-        let mut decision = Decide::Fail;
+        let mut decision = Decide::Deny;
         for (_, policy) in self.policies.iter() {
             if let Some(ref entity_check) = policy.entity_check {
                 if !entity_check.check(&entity) {
@@ -1039,7 +1039,7 @@ impl Datastore {
 
             // all conditions must match; take decision
             decision = policy.decision.clone();
-            if let Decide::Fail = decision {
+            if let Decide::Deny = decision {
                 break;
             }
         }

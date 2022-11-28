@@ -136,33 +136,33 @@ impl From<NumberCheck> for protos::NumberCheck {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) enum Decide {
     // rule fails
-    Fail,
+    Deny,
     // rule passes
-    Pass,
+    Allow,
 }
 
 /// convert from proto to enum
 impl From<protos::Decide> for Decide {
     fn from(d: protos::Decide) -> Self {
         match d {
-            protos::Decide::Fail => Self::Fail,
-            protos::Decide::Pass => Self::Pass,
+            protos::Decide::Deny => Self::Deny,
+            protos::Decide::Allow => Self::Allow,
         }
     }
 }
 impl From<Decide> for protos::Decide {
     fn from(d: Decide) -> Self {
         match d {
-            Decide::Fail => Self::Fail,
-            Decide::Pass => Self::Pass,
+            Decide::Deny => Self::Deny,
+            Decide::Allow => Self::Allow,
         }
     }
 }
 impl Display for protos::Decide {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            protos::Decide::Fail => write!(f, "FAIL"),
-            protos::Decide::Pass => write!(f, "PASS"),
+            protos::Decide::Deny => write!(f, "DENY"),
+            protos::Decide::Allow => write!(f, "ALLOW"),
         }
     }
 }

@@ -21,10 +21,10 @@ enum NUM {
 
 /** Decision this rule make */
 enum DECIDE {
-    // rule decides explicity FAIL
-    FAIL = 0;
-    // rule decides explicit PASS
-    PASS = 1;
+    // rule decides explicity DENY
+    DENY = 0;
+    // rule decides explicit ALLOW
+    ALLOW = 1;
 }
 
 /** String based check */
