@@ -1,14 +1,6 @@
 syntax = "proto3";
 package policies;
 
-/** String comparison operators */
-enum CMP {
-    // equals
-    IS = 0;
-    // does not equal
-    IS_NOT = 1;
-}
-
 /** Set comparison operators */
 enum SET {
     // set includes
@@ -37,10 +29,10 @@ enum DECIDE {
 
 /** String based check */
 message StringCheck {
-    // how to compare the string
-    CMP val_cmp = 1;
-    // string to compare against
-    string val = 2;
+    // are we checking for a match or excluding values
+    SET val_cmp = 1;
+    // strings to compare against
+    repeated string vals = 2;
 }
 
 /** Set based checking */

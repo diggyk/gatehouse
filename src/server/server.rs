@@ -15,7 +15,8 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Starting Gatehouse server: {:?}", addr);
     Server::builder()
-        .add_service(GatehouseServer::new(svc))
+        .accept_http1(true)
+        .add_service(tonic_web::enable(GatehouseServer::new(svc)))
         .serve(addr)
         .await?;
 
