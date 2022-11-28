@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use common::{add_policy, get_roles};
 use gatehouse::proto::policies::{
-    Cmp, Decide, EntityCheck, KvCheck, Num, NumberCheck, Set, StringCheck,
+    Decide, EntityCheck, KvCheck, Num, NumberCheck, Set, StringCheck,
 };
 use tokio::test;
 
@@ -450,8 +450,8 @@ async fn test_polices() {
         Some(EntityCheck {
             name: None,
             typestr: Some(StringCheck {
-                val_cmp: Cmp::Is.into(),
-                val: str("user"),
+                val_cmp: Set::Has.into(),
+                vals: vec![str("user")],
             }),
             attributes: vec![KvCheck {
                 key: str("role"),
@@ -477,8 +477,8 @@ async fn test_polices() {
         Some(EntityCheck {
             name: None,
             typestr: Some(StringCheck {
-                val_cmp: Cmp::Is.into(),
-                val: str("user"),
+                val_cmp: Set::Has.into(),
+                vals: vec![str("user")],
             }),
             attributes: vec![KvCheck {
                 key: str("role"),
@@ -532,4 +532,37 @@ async fn test_polices() {
     let pols = get_policies(&mut client, None, None, vec![], None).await;
     assert_eq!(pols.len(), 1);
     assert_eq!(pols[0].name, "allow-everyone");
+
+    let _ = add_policy(
+        &mut client,
+        "allow-ceo",
+        Some("Give all access to the CEO"),
+        Some(EntityCheck {
+            name: Some(StringCheck {
+                val_cmp: Set::Has.into(),
+                vals: vec![str("ceo")],
+            }),
+            typestr: Some(StringCheck {
+                val_cmp: Set::Has.into(),
+                vals: vec![str("user")],
+            }),
+            attributes: vec![KvCheck {
+                key: str("role"),
+                op: Set::Has.into(),
+                val: str("admin"),
+            }],
+            bucket: None,
+        }),
+        vec![KvCheck {
+            key: str("env"),
+            op: Set::Has.into(),
+            val: str("prod"),
+        }],
+        None,
+        Decide::Pass,
+    )
+    .await;
+
+    let pol_found = get_policies(&mut client, None, None, vec![], None).await;
+    assert_eq!(pol_found.len(), 2);
 }

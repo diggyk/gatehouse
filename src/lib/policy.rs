@@ -9,17 +9,17 @@ use crate::proto::policies as protos;
 /// A string comparison check
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) enum StringCheck {
-    // check if string equals this string
-    Is(String),
-    // chec, if string does not equal this string
-    IsNot(String),
+    // check if string equals one of these values
+    OneOf(Vec<String>),
+    // check if string is not equal to one of these values
+    NotOneOf(Vec<String>),
 }
 impl StringCheck {
     // check a string value against this string check
     pub fn check(&self, val: &str) -> bool {
         match self {
-            StringCheck::Is(check_val) => val == check_val,
-            StringCheck::IsNot(check_val) => val != check_val,
+            StringCheck::OneOf(check_val) => check_val.iter().any(|v| v == val),
+            StringCheck::NotOneOf(check_val) => !check_val.iter().any(|v| v == val),
         }
     }
 }
@@ -171,21 +171,21 @@ impl Display for protos::Decide {
 impl From<protos::StringCheck> for StringCheck {
     fn from(sc: protos::StringCheck) -> Self {
         match sc.val_cmp() {
-            protos::Cmp::Is => Self::Is(sc.val),
-            protos::Cmp::IsNot => Self::IsNot(sc.val),
+            protos::Set::Has => Self::OneOf(sc.vals),
+            protos::Set::HasNot => Self::NotOneOf(sc.vals),
         }
     }
 }
 impl From<StringCheck> for protos::StringCheck {
     fn from(sc: StringCheck) -> Self {
         match sc {
-            StringCheck::Is(val) => Self {
-                val_cmp: protos::Cmp::Is.into(),
-                val,
+            StringCheck::OneOf(vals) => Self {
+                val_cmp: protos::Set::Has.into(),
+                vals,
             },
-            StringCheck::IsNot(val) => Self {
-                val_cmp: protos::Cmp::IsNot.into(),
-                val,
+            StringCheck::NotOneOf(vals) => Self {
+                val_cmp: protos::Set::HasNot.into(),
+                vals,
             },
         }
     }
@@ -388,11 +388,12 @@ mod tests {
 
     #[test]
     fn test_stringcheck() {
-        assert!(StringCheck::Is(str("testing")).check("testing"));
-        assert!(!StringCheck::Is(str("testing")).check("should fail"));
+        assert!(StringCheck::OneOf(vec![str("testing"), str("test2")]).check("testing"));
+        assert!(StringCheck::OneOf(vec![str("testing"), str("test2")]).check("test2"));
+        assert!(!StringCheck::OneOf(vec![str("testing"), str("test2")]).check("should fail"));
 
-        assert!(!StringCheck::IsNot(str("testing")).check("testing"));
-        assert!(StringCheck::IsNot(str("testing")).check("should fail"));
+        assert!(!StringCheck::NotOneOf(vec![str("testing"), str("test2")]).check("testing"));
+        assert!(StringCheck::NotOneOf(vec![str("testing"), str("test2")]).check("should pass"));
     }
 
     #[test]
@@ -446,14 +447,14 @@ mod tests {
 
         // check name
         assert!(EntityCheck {
-            name: Some(StringCheck::Is(str("kaitlyn"))),
+            name: Some(StringCheck::OneOf(vec![str("betty"), str("kaitlyn")])),
             typestr: None,
             attributes: vec![],
             bucket: None,
         }
         .check(&entity));
         assert!(!EntityCheck {
-            name: Some(StringCheck::Is(str("jonny"))),
+            name: Some(StringCheck::OneOf(vec![str("jonny")])),
             typestr: None,
             attributes: vec![],
             bucket: None,
@@ -462,15 +463,15 @@ mod tests {
 
         // check typestr
         assert!(EntityCheck {
-            name: Some(StringCheck::Is(str("kaitlyn"))),
-            typestr: Some(StringCheck::Is(str("user"))),
+            name: Some(StringCheck::OneOf(vec![str("betty"), str("kaitlyn")])),
+            typestr: Some(StringCheck::OneOf(vec![str("user")])),
             attributes: vec![],
             bucket: None,
         }
         .check(&entity));
         assert!(!EntityCheck {
-            name: Some(StringCheck::Is(str("kaitlyn"))),
-            typestr: Some(StringCheck::IsNot(str("user"))),
+            name: Some(StringCheck::OneOf(vec![str("kaitlyn")])),
+            typestr: Some(StringCheck::NotOneOf(vec![str("user")])),
             attributes: vec![],
             bucket: None,
         }
@@ -478,15 +479,15 @@ mod tests {
 
         // check attributes
         assert!(EntityCheck {
-            name: Some(StringCheck::Is(str("kaitlyn"))),
-            typestr: Some(StringCheck::Is(str("user"))),
+            name: Some(StringCheck::OneOf(vec![str("betty"), str("kaitlyn")])),
+            typestr: Some(StringCheck::OneOf(vec![str("user")])),
             attributes: vec![KvCheck::Has(str("region"), str("us"))],
             bucket: None,
         }
         .check(&entity));
         assert!(!EntityCheck {
-            name: Some(StringCheck::Is(str("kaitlyn"))),
-            typestr: Some(StringCheck::Is(str("user"))),
+            name: Some(StringCheck::OneOf(vec![str("betty"), str("kaitlyn")])),
+            typestr: Some(StringCheck::OneOf(vec![str("user")])),
             attributes: vec![KvCheck::Has(str("role"), str("manager"))],
             bucket: None,
         }
@@ -494,15 +495,15 @@ mod tests {
 
         // check bucket (which is 28)
         assert!(EntityCheck {
-            name: Some(StringCheck::Is(str("kaitlyn"))),
-            typestr: Some(StringCheck::Is(str("user"))),
+            name: Some(StringCheck::OneOf(vec![str("betty"), str("kaitlyn")])),
+            typestr: Some(StringCheck::OneOf(vec![str("user")])),
             attributes: vec![KvCheck::Has(str("region"), str("us"))],
             bucket: Some(NumberCheck::LessThan(50)),
         }
         .check(&entity));
         assert!(!EntityCheck {
-            name: Some(StringCheck::Is(str("kaitlyn"))),
-            typestr: Some(StringCheck::Is(str("user"))),
+            name: Some(StringCheck::OneOf(vec![str("betty"), str("kaitlyn")])),
+            typestr: Some(StringCheck::OneOf(vec![str("user")])),
             attributes: vec![KvCheck::Has(str("region"), str("us"))],
             bucket: Some(NumberCheck::MoreThan(50)),
         }
@@ -529,14 +530,14 @@ mod tests {
 
         // test name
         assert!(TargetCheck {
-            name: Some(StringCheck::Is(str("bree"))),
+            name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: None,
             attributes: vec![],
             action: None,
         }
         .check("bree", "db", &map, "read"));
         assert!(!TargetCheck {
-            name: Some(StringCheck::IsNot(str("bree"))),
+            name: Some(StringCheck::NotOneOf(vec![str("bree")])),
             typestr: None,
             attributes: vec![],
             action: None,
@@ -545,15 +546,15 @@ mod tests {
 
         // test type
         assert!(TargetCheck {
-            name: Some(StringCheck::Is(str("bree"))),
-            typestr: Some(StringCheck::Is(str("db"))),
+            name: Some(StringCheck::OneOf(vec![str("bree")])),
+            typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![],
             action: None,
         }
         .check("bree", "db", &map, "read"));
         assert!(!TargetCheck {
-            name: Some(StringCheck::Is(str("bree"))),
-            typestr: Some(StringCheck::Is(str("web"))),
+            name: Some(StringCheck::OneOf(vec![str("bree")])),
+            typestr: Some(StringCheck::OneOf(vec![str("web")])),
             attributes: vec![],
             action: None,
         }
@@ -561,15 +562,15 @@ mod tests {
 
         // test attributes
         assert!(TargetCheck {
-            name: Some(StringCheck::Is(str("bree"))),
-            typestr: Some(StringCheck::Is(str("db"))),
+            name: Some(StringCheck::OneOf(vec![str("bree")])),
+            typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![KvCheck::Has(str("env"), str("test"))],
             action: None,
         }
         .check("bree", "db", &map, "read"));
         assert!(!TargetCheck {
-            name: Some(StringCheck::Is(str("bree"))),
-            typestr: Some(StringCheck::Is(str("db"))),
+            name: Some(StringCheck::OneOf(vec![str("bree")])),
+            typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![KvCheck::Has(str("load"), str("nominal"))],
             action: None,
         }
@@ -577,17 +578,17 @@ mod tests {
 
         // test target action
         assert!(TargetCheck {
-            name: Some(StringCheck::Is(str("bree"))),
-            typestr: Some(StringCheck::Is(str("db"))),
+            name: Some(StringCheck::OneOf(vec![str("bree")])),
+            typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![KvCheck::Has(str("env"), str("test"))],
-            action: Some(StringCheck::Is(str("read"))),
+            action: Some(StringCheck::OneOf(vec![str("read")])),
         }
         .check("bree", "db", &map, "read"));
         assert!(!TargetCheck {
-            name: Some(StringCheck::Is(str("bree"))),
-            typestr: Some(StringCheck::Is(str("db"))),
+            name: Some(StringCheck::OneOf(vec![str("bree")])),
+            typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![KvCheck::Has(str("env"), str("test"))],
-            action: Some(StringCheck::Is(str("write"))),
+            action: Some(StringCheck::OneOf(vec![str("write")])),
         }
         .check("bree", "db", &map, "read"));
     }
