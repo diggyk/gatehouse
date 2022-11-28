@@ -456,7 +456,7 @@ async fn test_polices() {
             attributes: vec![KvCheck {
                 key: str("role"),
                 op: Set::Has.into(),
-                val: str("admin"),
+                vals: vec![str("admin")],
             }],
             bucket: None,
         }),
@@ -483,7 +483,7 @@ async fn test_polices() {
             attributes: vec![KvCheck {
                 key: str("role"),
                 op: Set::Has.into(),
-                val: str("admin"),
+                vals: vec![str("admin")],
             }],
             bucket: Some(NumberCheck {
                 op: Num::LessThan.into(),
@@ -519,28 +519,28 @@ async fn test_polices() {
     )
     .await;
 
-    let pols = get_policies(&mut client, None, None, vec![], None).await;
+    let pols = get_policies(&mut client, None).await;
     assert_eq!(pols.len(), 2);
 
-    let pol_found = get_policies(&mut client, Some("allow-admins"), None, vec![], None).await;
+    let pol_found = get_policies(&mut client, Some("allow-admins")).await;
     assert_eq!(pol_found.len(), 1);
     assert_eq!(pol1, pol_found[0]);
 
     let pol_removed = remove_policy(&mut client, "allow-admins").await;
     assert_eq!(pol1, pol_removed);
 
-    let pols = get_policies(&mut client, None, None, vec![], None).await;
+    let pols = get_policies(&mut client, None).await;
     assert_eq!(pols.len(), 1);
     assert_eq!(pols[0].name, "allow-everyone");
 
     let _ = add_policy(
         &mut client,
-        "allow-ceo",
-        Some("Give all access to the CEO"),
+        "allow-teamalpha",
+        Some("Give specific access to members of Team Alpha"),
         Some(EntityCheck {
             name: Some(StringCheck {
                 val_cmp: Set::Has.into(),
-                vals: vec![str("ceo")],
+                vals: vec![str("brandy"), str("hank")],
             }),
             typestr: Some(StringCheck {
                 val_cmp: Set::Has.into(),
@@ -549,20 +549,20 @@ async fn test_polices() {
             attributes: vec![KvCheck {
                 key: str("role"),
                 op: Set::Has.into(),
-                val: str("admin"),
+                vals: vec![str("admin")],
             }],
             bucket: None,
         }),
         vec![KvCheck {
             key: str("env"),
             op: Set::Has.into(),
-            val: str("prod"),
+            vals: vec![str("prod")],
         }],
         None,
         Decide::Pass,
     )
     .await;
 
-    let pol_found = get_policies(&mut client, None, None, vec![], None).await;
+    let pol_found = get_policies(&mut client, None).await;
     assert_eq!(pol_found.len(), 2);
 }

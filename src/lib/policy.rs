@@ -27,29 +27,29 @@ impl StringCheck {
 /// A key value check
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) enum KvCheck {
-    // check if a particular key has a particular value
-    Has(String, String),
-    // check if a particular key does not have a particular value
-    HasNot(String, String),
+    // check if a particular key has one of the given values
+    Has(String, Vec<String>),
+    // check if a particular key does not have one of the given values
+    HasNot(String, Vec<String>),
 }
 impl KvCheck {
     // check a map of attrib/vals for a match
-    pub fn check(&self, map: &HashMap<String, HashSet<String>>) -> bool {
+    pub fn check(&self, attr_map: &HashMap<String, HashSet<String>>) -> bool {
         match self {
-            KvCheck::Has(key, val) => {
-                if !map.contains_key(key) {
+            KvCheck::Has(key, vals) => {
+                if !attr_map.contains_key(key) {
                     false
-                } else if let Some(vals) = map.get(key) {
-                    vals.contains(val)
+                } else if let Some(attr_vals) = attr_map.get(key) {
+                    vals.iter().any(|check_val| attr_vals.contains(check_val))
                 } else {
                     false
                 }
             }
-            KvCheck::HasNot(key, val) => {
-                if !map.contains_key(key) {
+            KvCheck::HasNot(key, vals) => {
+                if !attr_map.contains_key(key) {
                     true
-                } else if let Some(vals) = map.get(key) {
-                    !vals.contains(val)
+                } else if let Some(attr_vals) = attr_map.get(key) {
+                    !vals.iter().any(|check_val| attr_vals.contains(check_val))
                 } else {
                     true
                 }
@@ -61,23 +61,23 @@ impl KvCheck {
 impl From<protos::KvCheck> for KvCheck {
     fn from(kv: protos::KvCheck) -> Self {
         match kv.op() {
-            protos::Set::Has => Self::Has(kv.key, kv.val),
-            protos::Set::HasNot => Self::HasNot(kv.key, kv.val),
+            protos::Set::Has => Self::Has(kv.key, kv.vals),
+            protos::Set::HasNot => Self::HasNot(kv.key, kv.vals),
         }
     }
 }
 impl From<KvCheck> for protos::KvCheck {
     fn from(kv: KvCheck) -> Self {
         match kv {
-            KvCheck::Has(key, val) => Self {
+            KvCheck::Has(key, vals) => Self {
                 key,
                 op: protos::Set::Has.into(),
-                val,
+                vals,
             },
-            KvCheck::HasNot(key, val) => Self {
+            KvCheck::HasNot(key, vals) => Self {
                 key,
                 op: protos::Set::HasNot.into(),
-                val,
+                vals,
             },
         }
     }
@@ -408,12 +408,12 @@ mod tests {
             HashSet::from_iter(vec![str("us"), str("emea")]),
         );
 
-        assert!(KvCheck::Has(str("role"), str("user")).check(&map));
-        assert!(!KvCheck::Has(str("role"), str("manager")).check(&map));
-        assert!(KvCheck::HasNot(str("role"), str("manager")).check(&map));
-        assert!(!KvCheck::Has(str("office"), str("london")).check(&map));
-        assert!(KvCheck::HasNot(str("region"), str("anz")).check(&map));
-        assert!(KvCheck::HasNot(str("office"), str("london")).check(&map));
+        assert!(KvCheck::Has(str("role"), vec![str("banned"), str("user")]).check(&map));
+        assert!(!KvCheck::Has(str("role"), vec![str("manager")]).check(&map));
+        assert!(KvCheck::HasNot(str("role"), vec![str("manager")]).check(&map));
+        assert!(!KvCheck::Has(str("office"), vec![str("london"), str("dublin")]).check(&map));
+        assert!(KvCheck::HasNot(str("region"), vec![str("anz")]).check(&map));
+        assert!(KvCheck::HasNot(str("office"), vec![str("london")]).check(&map));
     }
 
     #[test]
@@ -481,14 +481,14 @@ mod tests {
         assert!(EntityCheck {
             name: Some(StringCheck::OneOf(vec![str("betty"), str("kaitlyn")])),
             typestr: Some(StringCheck::OneOf(vec![str("user")])),
-            attributes: vec![KvCheck::Has(str("region"), str("us"))],
+            attributes: vec![KvCheck::Has(str("region"), vec![str("us")])],
             bucket: None,
         }
         .check(&entity));
         assert!(!EntityCheck {
             name: Some(StringCheck::OneOf(vec![str("betty"), str("kaitlyn")])),
             typestr: Some(StringCheck::OneOf(vec![str("user")])),
-            attributes: vec![KvCheck::Has(str("role"), str("manager"))],
+            attributes: vec![KvCheck::Has(str("role"), vec![str("manager")])],
             bucket: None,
         }
         .check(&entity));
@@ -497,14 +497,14 @@ mod tests {
         assert!(EntityCheck {
             name: Some(StringCheck::OneOf(vec![str("betty"), str("kaitlyn")])),
             typestr: Some(StringCheck::OneOf(vec![str("user")])),
-            attributes: vec![KvCheck::Has(str("region"), str("us"))],
+            attributes: vec![KvCheck::Has(str("region"), vec![str("us")])],
             bucket: Some(NumberCheck::LessThan(50)),
         }
         .check(&entity));
         assert!(!EntityCheck {
             name: Some(StringCheck::OneOf(vec![str("betty"), str("kaitlyn")])),
             typestr: Some(StringCheck::OneOf(vec![str("user")])),
-            attributes: vec![KvCheck::Has(str("region"), str("us"))],
+            attributes: vec![KvCheck::Has(str("region"), vec![str("us")])],
             bucket: Some(NumberCheck::MoreThan(50)),
         }
         .check(&entity));
@@ -564,14 +564,14 @@ mod tests {
         assert!(TargetCheck {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("db")])),
-            attributes: vec![KvCheck::Has(str("env"), str("test"))],
+            attributes: vec![KvCheck::Has(str("env"), vec![str("test")])],
             action: None,
         }
         .check("bree", "db", &map, "read"));
         assert!(!TargetCheck {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("db")])),
-            attributes: vec![KvCheck::Has(str("load"), str("nominal"))],
+            attributes: vec![KvCheck::Has(str("load"), vec![str("nominal")])],
             action: None,
         }
         .check("bree", "db", &map, "read"));
@@ -580,14 +580,14 @@ mod tests {
         assert!(TargetCheck {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("db")])),
-            attributes: vec![KvCheck::Has(str("env"), str("test"))],
+            attributes: vec![KvCheck::Has(str("env"), vec![str("test")])],
             action: Some(StringCheck::OneOf(vec![str("read")])),
         }
         .check("bree", "db", &map, "read"));
         assert!(!TargetCheck {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("db")])),
-            attributes: vec![KvCheck::Has(str("env"), str("test"))],
+            attributes: vec![KvCheck::Has(str("env"), vec![str("test")])],
             action: Some(StringCheck::OneOf(vec![str("write")])),
         }
         .check("bree", "db", &map, "read"));

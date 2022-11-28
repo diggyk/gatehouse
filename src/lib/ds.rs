@@ -974,33 +974,6 @@ impl Datastore {
                 }
             }
 
-            // see if entity check matches if entity check filter was given
-            if req.entity_check.is_some() {
-                // NOT IMPLEMENTED
-                let _ = tx.send(DsResponse::Error(Status::unimplemented(
-                    "Filter by entity check not implemented",
-                )));
-                return;
-            }
-
-            // see if env attributes match
-            if !req.env_attributes.is_empty() {
-                // NOT IMPLEMENTED
-                let _ = tx.send(DsResponse::Error(Status::unimplemented(
-                    "Filter by environment attribute checks is not implemented",
-                )));
-                return;
-            }
-
-            // see if target check matches if target check filter was given
-            if req.target_check.is_some() {
-                // NOT IMPLEMENTED
-                let _ = tx.send(DsResponse::Error(Status::unimplemented(
-                    "Filter by target check not implemented",
-                )));
-                return;
-            }
-
             policies.push(policy.to_owned().into());
         }
 

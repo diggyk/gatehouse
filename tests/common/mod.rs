@@ -430,15 +430,9 @@ pub async fn remove_policy(client: &mut GatehouseClient<Channel>, name: &str) ->
 pub async fn get_policies(
     client: &mut GatehouseClient<Channel>,
     name: Option<&str>,
-    entity_check: Option<EntityCheck>,
-    env_attributes: Vec<KvCheck>,
-    target_check: Option<TargetCheck>,
 ) -> Vec<PolicyRule> {
     let req = GetPoliciesRequest {
         name: name.map(String::from),
-        entity_check,
-        env_attributes,
-        target_check,
     };
 
     client

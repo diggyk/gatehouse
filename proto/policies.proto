@@ -43,8 +43,8 @@ message KvCheck {
     // how to check the set
     SET op = 2;
 
-    // value to check for in the set
-    string val = 3;
+    // values to check for in the set; This is an OR match. Use multiple KvChecks for AND matches
+    repeated string vals = 3;
 }
 
 /** Number check */
@@ -122,15 +122,6 @@ message RemovePolicyRequest {
 message GetPoliciesRequest {
     // Short human readable name
     optional string name = 1;
-
-    // Entity rules to apply to determine if this policy should apply
-    optional EntityCheck entity_check = 2;
-
-    // Environment check to perform
-    repeated KvCheck env_attributes = 3;
-
-    // Action rules to see if this policy should be applied
-    optional TargetCheck target_check = 4;
 }
 
 /** Single policy response message */
