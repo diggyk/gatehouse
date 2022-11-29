@@ -253,6 +253,7 @@ pub async fn get_roles(client: &mut GatehouseClient<Channel>, name: Option<&str>
 pub async fn add_group(
     client: &mut GatehouseClient<Channel>,
     name: &str,
+    desc: Option<&str>,
     members: Vec<(&str, &str)>,
     roles: Vec<&str>,
 ) -> Group {
@@ -267,6 +268,7 @@ pub async fn add_group(
 
     let req = AddGroupRequest {
         name: name.to_string(),
+        desc: desc.map(String::from),
         members,
         roles,
     };
@@ -284,6 +286,7 @@ pub async fn add_group(
 pub async fn modify_group(
     client: &mut GatehouseClient<Channel>,
     name: &str,
+    desc: Option<&str>,
     add_members: Vec<(&str, &str)>,
     add_roles: Vec<&str>,
     remove_members: Vec<(&str, &str)>,
@@ -309,6 +312,7 @@ pub async fn modify_group(
 
     let req = ModifyGroupRequest {
         name: name.to_string(),
+        desc: desc.map(String::from),
         add_members,
         add_roles,
         remove_members,

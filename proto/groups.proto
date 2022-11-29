@@ -17,11 +17,14 @@ message Group {
     // group name
     string name = 1;
 
+    // group description
+    optional string desc = 2;
+
     // group members
-    repeated GroupMember members = 2;
+    repeated GroupMember members = 3;
 
     // roles granted group members
-    repeated string roles = 3;
+    repeated string roles = 4;
 }
 
 /** Request to add a group */
@@ -29,11 +32,14 @@ message AddGroupRequest {
     // name of the group
     string name = 1;
 
+    // optional human readable description
+    optional string desc = 2;
+
     // group members
-    repeated GroupMember members = 2;
+    repeated GroupMember members = 3;
 
     // roles granted group members
-    repeated string roles = 3;
+    repeated string roles = 4;
 }
 
 /** Request to modify a group */
@@ -41,17 +47,20 @@ message ModifyGroupRequest {
     // name of the group to modify
     string name = 1;
 
+    // group description
+    optional string desc = 2;
+
     // group members to add
-    repeated GroupMember add_members = 2;
+    repeated GroupMember add_members = 3;
 
     // group members to remove
-    repeated GroupMember remove_members = 3;
+    repeated GroupMember remove_members = 4;
 
     // roles to be granted to group members
-    repeated string add_roles = 4;
+    repeated string add_roles = 5;
 
     // roles to be revoked from group members
-    repeated string remove_roles = 5;
+    repeated string remove_roles = 6;
 }
 
 /** Delete group request */

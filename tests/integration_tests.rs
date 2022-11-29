@@ -2,23 +2,24 @@ mod common;
 
 use std::time::Duration;
 
-use common::{add_policy, get_roles};
 use gatehouse::proto::policies::{
     Decide, EntityCheck, KvCheck, Num, NumberCheck, Set, StringCheck, TargetCheck,
 };
+use serial_test::serial;
 use tokio::test;
 
 use gatehouse::proto::base::gatehouse_client::GatehouseClient;
 
 use crate::common::{
-    add_entity, add_group, add_role, add_target, get_entities, get_groups, get_policies,
-    get_targets, modify_entity, modify_group, modify_policy, modify_target, remove_entity,
-    remove_group, remove_policy, remove_role, remove_target, str,
+    add_entity, add_group, add_policy, add_role, add_target, get_entities, get_groups,
+    get_policies, get_roles, get_targets, modify_entity, modify_group, modify_policy,
+    modify_target, remove_entity, remove_group, remove_policy, remove_role, remove_target, str,
 };
 
 #[test]
+#[serial]
 async fn test_crud() {
-    tokio::spawn(common::run_server());
+    let handle = tokio::spawn(common::run_server());
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     test_targets().await;
@@ -26,6 +27,13 @@ async fn test_crud() {
     test_roles().await;
     test_groups().await;
     test_polices().await;
+
+    handle.abort();
+
+    tokio::spawn(common::run_server());
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    load_data().await;
 }
 
 async fn test_targets() {
@@ -363,6 +371,7 @@ async fn test_groups() {
     let grp1 = add_group(
         &mut client,
         "administrators",
+        None,
         vec![("sandytest", "authuser"), ("donnyman", "authuser")],
         vec!["admin", "user"],
     )
@@ -384,6 +393,7 @@ async fn test_groups() {
     let grp1 = modify_group(
         &mut client,
         "administrators",
+        None,
         vec![("testman", "authuser"), ("testdog", "authuser")],
         vec!["manager", "guest"],
         vec![("sandytest", "authuser")],
@@ -394,6 +404,7 @@ async fn test_groups() {
     let grp2 = add_group(
         &mut client,
         "customers",
+        None,
         vec![("coke", "authuser"), ("pepsi", "authuser")],
         vec!["user", "manager"],
     )
@@ -593,4 +604,242 @@ async fn test_polices() {
 
     let pol_found = get_policies(&mut client, None).await;
     assert_eq!(pol_found.len(), 2);
+}
+
+async fn load_data() {
+    let mut client = GatehouseClient::connect("http://localhost:6174")
+        .await
+        .expect("could not create client");
+
+    add_target(
+        &mut client,
+        "db1",
+        "database",
+        vec!["read", "write", "update", "delete"],
+        vec![(str("role"), vec!["master"]), (str("schema"), vec!["v20"])],
+    )
+    .await;
+    add_target(
+        &mut client,
+        "db2",
+        "database",
+        vec!["read", "write", "update", "delete"],
+        vec![(str("role"), vec!["replica"]), (str("schema"), vec!["v20"])],
+    )
+    .await;
+    add_target(
+        &mut client,
+        "www1",
+        "website",
+        vec!["view-users", "create-users", "read-metrics"],
+        vec![(str("region"), vec!["us-west"])],
+    )
+    .await;
+    add_target(
+        &mut client,
+        "www2",
+        "website",
+        vec!["view-users", "create-users", "read-metrics"],
+        vec![(str("region"), vec!["emea"])],
+    )
+    .await;
+    add_target(
+        &mut client,
+        "login",
+        "website",
+        vec!["view-users", "create-users", "read-metrics"],
+        vec![(str("region"), vec!["anz"])],
+    )
+    .await;
+
+    add_entity(
+        &mut client,
+        "sally",
+        "user",
+        vec![
+            (str("team"), vec!["eng"]),
+            (str("office"), vec!["london", "remote"]),
+        ],
+    )
+    .await;
+    add_entity(
+        &mut client,
+        "kelsey",
+        "user",
+        vec![(str("team"), vec!["eng"]), (str("office"), vec!["nyc"])],
+    )
+    .await;
+    add_entity(
+        &mut client,
+        "john",
+        "user",
+        vec![(str("team"), vec!["eng"]), (str("office"), vec!["sfo"])],
+    )
+    .await;
+    add_entity(
+        &mut client,
+        "devraj",
+        "user",
+        vec![(str("team"), vec!["eng"]), (str("office"), vec!["sfo"])],
+    )
+    .await;
+    add_entity(
+        &mut client,
+        "marie",
+        "user",
+        vec![
+            (str("team"), vec!["eng"]),
+            (str("office"), vec!["sfo", "remote"]),
+        ],
+    )
+    .await;
+    add_entity(
+        &mut client,
+        "catie",
+        "user",
+        vec![
+            (str("team"), vec!["ceo", "exec"]),
+            (str("office"), vec!["sfo"]),
+        ],
+    )
+    .await;
+    add_entity(
+        &mut client,
+        "rose",
+        "user",
+        vec![(str("team"), vec!["exec"]), (str("office"), vec!["sfo"])],
+    )
+    .await;
+    add_entity(
+        &mut client,
+        "jack",
+        "user",
+        vec![
+            (str("team"), vec!["ceo"]),
+            (str("office"), vec!["nyc", "remote"]),
+        ],
+    )
+    .await;
+    add_entity(
+        &mut client,
+        "logger",
+        "svc",
+        vec![(str("env"), vec!["prod"])],
+    )
+    .await;
+    add_entity(
+        &mut client,
+        "launcher",
+        "svc",
+        vec![(str("env"), vec!["dev"])],
+    )
+    .await;
+    add_entity(
+        &mut client,
+        "printer",
+        "svc",
+        vec![(str("env"), vec!["dev"])],
+    )
+    .await;
+
+    add_role(&mut client, "admin").await;
+    add_role(&mut client, "user").await;
+    add_role(&mut client, "guest").await;
+    add_role(&mut client, "manager").await;
+
+    add_group(
+        &mut client,
+        "administrators",
+        Some("Administrators with special privileges"),
+        vec![
+            ("john", "user"),
+            ("adminapi", "svc"),
+            ("kelsey", "user"),
+            ("marie", "user"),
+        ],
+        vec!["admin", "user"],
+    )
+    .await;
+
+    add_group(
+        &mut client,
+        "customers",
+        Some("Beta customers"),
+        vec![
+            ("coke", "authuser"),
+            ("pepsi", "authuser"),
+            ("marie", "user"),
+        ],
+        vec!["user", "guest"],
+    )
+    .await;
+
+    add_policy(
+        &mut client,
+        "allow-everyone",
+        None,
+        None,
+        vec![],
+        None,
+        Decide::Allow,
+    )
+    .await;
+
+    add_policy(
+        &mut client,
+        "allow-teamalpha",
+        Some("Give specific access to members of Team Alpha"),
+        Some(EntityCheck {
+            name: Some(StringCheck {
+                val_cmp: Set::Has.into(),
+                vals: vec![str("john"), str("kelsey"), str("sally")],
+            }),
+            typestr: Some(StringCheck {
+                val_cmp: Set::Has.into(),
+                vals: vec![str("user")],
+            }),
+            attributes: vec![
+                KvCheck {
+                    key: str("role"),
+                    op: Set::Has.into(),
+                    vals: vec![str("admin")],
+                },
+                KvCheck {
+                    key: str("role"),
+                    op: Set::HasNot.into(),
+                    vals: vec![str("manager"), str("exec")],
+                },
+            ],
+            bucket: Some(NumberCheck {
+                op: Num::LessThan.into(),
+                val: 50,
+            }),
+        }),
+        vec![KvCheck {
+            key: str("env"),
+            op: Set::Has.into(),
+            vals: vec![str("prod")],
+        }],
+        Some(TargetCheck {
+            name: Some(StringCheck {
+                val_cmp: Set::Has.into(),
+                vals: vec![str("launchctl"), str("abortctl")],
+            }),
+            typestr: Some(StringCheck {
+                val_cmp: Set::Has.into(),
+                vals: vec![str("svc"), str("api"), str("ui")],
+            }),
+            attributes: vec![KvCheck {
+                key: str("release"),
+                op: Set::Has.into(),
+                vals: vec![str("stable"), str("canary")],
+            }],
+            action: Some(StringCheck {
+                val_cmp: Set::Has.into(),
+                vals: vec![str("engage"), str("check"), str("read")],
+            }),
+        }),
+        Decide::Allow,
+    )
+    .await;
 }

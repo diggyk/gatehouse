@@ -482,23 +482,24 @@ impl Datastore {
 
     /// Get all entities, optionally filtered by type
     async fn get_entities(&mut self, req: GetAllEntitiesRequest, tx: Sender<DsResponse>) {
-        let typestr = req.typestr.map(|t| t.to_ascii_lowercase());
-        let name = req.name.map(|t| t.to_ascii_lowercase());
+        let type_filter = req.typestr.map(|t| t.to_ascii_lowercase());
+        let name_filter = req.name.map(|t| t.to_ascii_lowercase());
         let mut entities: Vec<Entity> = Vec::new();
 
-        for typemap in self.entities.iter() {
-            if let Some(ref filter_type) = typestr {
-                if typemap.0.as_str() != filter_type {
+        for (typestr, entities_of_type) in self.entities.iter() {
+            if let Some(ref filter_type) = type_filter {
+                if typestr.as_str() != filter_type {
                     continue;
                 }
             }
-            for entity in typemap.1.iter() {
-                if let Some(ref name_ref) = name {
-                    if entity.0.as_str() != name_ref {
+            for (entity_name, entity) in entities_of_type.iter() {
+                if let Some(ref name_ref) = name_filter {
+                    if entity_name.as_str() != name_ref {
                         continue;
                     }
                 }
-                entities.push(entity.1.clone().into());
+                let expanded_entity = self.expand_groups_and_roles(entity.clone());
+                entities.push(expanded_entity.into());
             }
         }
 
@@ -648,7 +649,7 @@ impl Datastore {
             roles.insert(role_req_name);
         }
 
-        let new_group = RegisteredGroup::new(&name, members, roles);
+        let new_group = RegisteredGroup::new(&name, req.desc, members, roles);
 
         // try to save the group first and then if that works, update the roles and persist them
         if let Err(err) = self.backend.save_group(&new_group).await {
@@ -993,7 +994,8 @@ impl Datastore {
     /// In that case, we will add "member-of" attributes for each group, and "has-role" attributes
     /// for each role. Lastly, we will determine a bucket (between 0-99) using the murmur3 algo
     async fn check(&mut self, req: CheckRequest, tx: Sender<DsResponse>) {
-        let entity: RegisteredEntity = self.extend_entity(req.entity.unwrap());
+        let entity = self.extend_entity(RegisteredEntity::from(req.entity.unwrap()));
+
         let mut env_attributes = HashMap::new();
         for (key, vals) in req.env_attributes {
             env_attributes.insert(key, HashSet::from_iter(vals.values));
@@ -1050,10 +1052,10 @@ impl Datastore {
     /** HELPERS */
     /// Extend a given entity with additional attributes
     ///
-    /// Given an entity, build a registered entity with any additional attributes from a
+    /// Given a RegisteredEntity created just from a gRPC call,
+    /// update it with any additional attributes from a
     /// known entity, as well as any group/roles we might have.
-    fn extend_entity(&self, passed_entity: Entity) -> RegisteredEntity {
-        let mut entity: RegisteredEntity = RegisteredEntity::from(passed_entity);
+    fn extend_entity(&self, mut entity: RegisteredEntity) -> RegisteredEntity {
         let typed_entities = self.entities.get(&entity.typestr);
 
         // extend attributes if we know about this entity
@@ -1065,8 +1067,13 @@ impl Datastore {
             }
         }
 
-        // check groups
-        // create a representation of this entity as a RegisteredGroupMember so we can
+        entity = self.expand_groups_and_roles(entity);
+
+        entity
+    }
+
+    fn expand_groups_and_roles(&self, mut entity: RegisteredEntity) -> RegisteredEntity {
+        // create a representation of this entity as a RegisteredGroupMember so we can search for it
         let entity_as_member = RegisteredGroupMember::from(&entity);
         for group in self.groups.values() {
             if group.members.contains(&entity_as_member) {

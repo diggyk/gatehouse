@@ -20,6 +20,7 @@ pub(crate) struct RegisteredGroupMember {
 #[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 pub(crate) struct RegisteredGroup {
     pub name: String,
+    pub desc: Option<String>,
     pub members: HashSet<RegisteredGroupMember>,
     pub roles: HashSet<String>,
 }
@@ -27,12 +28,14 @@ pub(crate) struct RegisteredGroup {
 impl RegisteredGroup {
     pub(crate) fn new(
         name: &str,
+        desc: Option<String>,
         members: HashSet<RegisteredGroupMember>,
         roles: HashSet<String>,
     ) -> Self {
         let name = name.to_ascii_lowercase();
         Self {
             name,
+            desc,
             members,
             roles,
         }
@@ -93,6 +96,7 @@ impl From<RegisteredGroup> for Group {
     fn from(g: RegisteredGroup) -> Self {
         Self {
             name: g.name,
+            desc: g.desc,
             members: g.members.iter().map(|m| m.clone().into()).collect(),
             roles: g.roles.into_iter().collect(),
         }
