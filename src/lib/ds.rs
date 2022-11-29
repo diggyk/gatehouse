@@ -885,7 +885,7 @@ impl Datastore {
             }
         }
 
-        let _ = tx.send(DsResponse::SinglePolicy(new_policy.into()));
+        let _ = tx.send(DsResponse::SinglePolicy(Box::new(new_policy.into())));
     }
 
     /// Update an existing policy
@@ -927,7 +927,7 @@ impl Datastore {
             }
         }
 
-        let _ = tx.send(DsResponse::SinglePolicy(updated_policy.into()));
+        let _ = tx.send(DsResponse::SinglePolicy(Box::new(updated_policy.into())));
     }
 
     /// Remove an existing policy
@@ -959,7 +959,7 @@ impl Datastore {
             }
         }
 
-        let _ = tx.send(DsResponse::SinglePolicy(existing_policy.into()));
+        let _ = tx.send(DsResponse::SinglePolicy(Box::new(existing_policy.into())));
     }
 
     /// Get policies based on filters

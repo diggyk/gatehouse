@@ -20,7 +20,7 @@ use crate::common::{
 #[serial]
 async fn test_crud() {
     let handle = tokio::spawn(common::run_server());
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_secs(5)).await;
 
     test_targets().await;
     test_entities().await;
@@ -31,7 +31,7 @@ async fn test_crud() {
     handle.abort();
 
     tokio::spawn(common::run_server());
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_secs(5)).await;
 
     load_data().await;
 }

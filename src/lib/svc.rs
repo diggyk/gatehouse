@@ -449,7 +449,7 @@ impl Gatehouse for GatehouseSvc {
             DsResponse::SinglePolicy(rule) => {
                 //TODO! -- add metrics
                 println!("Added policy rule {}", rule);
-                return Ok(Response::new(PolicyResponse { rule: Some(rule) }));
+                return Ok(Response::new(PolicyResponse { rule: Some(*rule) }));
             }
             DsResponse::Error(status) => return Err(status),
             _ => return Err(Status::internal("Got unexpected answer from datastore")),
@@ -475,7 +475,7 @@ impl Gatehouse for GatehouseSvc {
             DsResponse::SinglePolicy(rule) => {
                 //TODO! -- add metrics
                 println!("Modified policy rule {}", rule);
-                return Ok(Response::new(PolicyResponse { rule: Some(rule) }));
+                return Ok(Response::new(PolicyResponse { rule: Some(*rule) }));
             }
             DsResponse::Error(status) => return Err(status),
             _ => return Err(Status::internal("Got unexpected answer from datastore")),
@@ -501,7 +501,7 @@ impl Gatehouse for GatehouseSvc {
             DsResponse::SinglePolicy(rule) => {
                 //TODO! -- add metrics
                 println!("Removed policy rule {}", rule);
-                return Ok(Response::new(PolicyResponse { rule: Some(rule) }));
+                return Ok(Response::new(PolicyResponse { rule: Some(*rule) }));
             }
             DsResponse::Error(status) => return Err(status),
             _ => return Err(Status::internal("Got unexpected answer from datastore")),

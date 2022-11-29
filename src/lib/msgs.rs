@@ -66,7 +66,7 @@ pub enum DsResponse {
     SingleGroup(Group),
     MultipleGroups(Vec<Group>),
 
-    SinglePolicy(PolicyRule),
+    SinglePolicy(Box<PolicyRule>),
     MultiplePolicies(Vec<PolicyRule>),
 
     CheckResult(Decide),
