@@ -661,6 +661,7 @@ async fn load_data() {
         vec![
             (str("team"), vec!["eng"]),
             (str("office"), vec!["london", "remote"]),
+            (str("clearance"), vec!["secret"]),
         ],
     )
     .await;
@@ -668,21 +669,33 @@ async fn load_data() {
         &mut client,
         "kelsey",
         "user",
-        vec![(str("team"), vec!["eng"]), (str("office"), vec!["nyc"])],
+        vec![
+            (str("team"), vec!["eng"]),
+            (str("office"), vec!["nyc"]),
+            (str("clearance"), vec!["secret"]),
+        ],
     )
     .await;
     add_entity(
         &mut client,
         "john",
         "user",
-        vec![(str("team"), vec!["eng"]), (str("office"), vec!["sfo"])],
+        vec![
+            (str("team"), vec!["eng"]),
+            (str("office"), vec!["sfo"]),
+            (str("clearance"), vec!["none"]),
+        ],
     )
     .await;
     add_entity(
         &mut client,
         "devraj",
         "user",
-        vec![(str("team"), vec!["eng"]), (str("office"), vec!["sfo"])],
+        vec![
+            (str("team"), vec!["eng"]),
+            (str("office"), vec!["sfo"]),
+            (str("clearance"), vec!["none"]),
+        ],
     )
     .await;
     add_entity(
@@ -692,6 +705,7 @@ async fn load_data() {
         vec![
             (str("team"), vec!["eng"]),
             (str("office"), vec!["sfo", "remote"]),
+            (str("clearance"), vec!["none"]),
         ],
     )
     .await;
@@ -702,6 +716,7 @@ async fn load_data() {
         vec![
             (str("team"), vec!["ceo", "exec"]),
             (str("office"), vec!["sfo"]),
+            (str("clearance"), vec!["secret"]),
         ],
     )
     .await;
@@ -709,7 +724,11 @@ async fn load_data() {
         &mut client,
         "rose",
         "user",
-        vec![(str("team"), vec!["exec"]), (str("office"), vec!["sfo"])],
+        vec![
+            (str("team"), vec!["exec"]),
+            (str("office"), vec!["sfo"]),
+            (str("clearance"), vec!["none"]),
+        ],
     )
     .await;
     add_entity(
@@ -733,7 +752,10 @@ async fn load_data() {
         &mut client,
         "launcher",
         "svc",
-        vec![(str("env"), vec!["dev"])],
+        vec![
+            (str("env"), vec!["dev"]),
+            (str("clearance"), vec!["secret"]),
+        ],
     )
     .await;
     add_entity(
@@ -840,8 +862,8 @@ async fn load_data() {
                 val_cmp: Set::Has.into(),
                 vals: vec![str("engage"), str("check"), str("read")],
             }),
-            match_in_entity: vec![],
-            match_in_env: vec![],
+            match_in_entity: vec![str("clearance")],
+            match_in_env: vec![str("env")],
         }),
         Decide::Allow,
     )
