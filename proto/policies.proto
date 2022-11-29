@@ -5,7 +5,7 @@ package policies;
 enum SET {
     // set includes
     HAS = 0;
-    // set does not inclue
+    // set does not include
     HAS_NOT = 1;
 }
 
@@ -75,8 +75,12 @@ message TargetCheck {
     optional StringCheck typestr = 2;
     // if specified, this policy applies to targets based on these attribute checks
     repeated KvCheck attributes = 3;
+    // if specified, this policy applies when the target has a single value match between these attributes and the entity
+    repeated string match_in_entity = 4;
+    // if specified, this policy applies when the target has a single value matche between these attributes and the environment
+    repeated string match_in_env = 5;
     // if specified, this policy applies to actions that pass this check
-    optional StringCheck action = 4;
+    optional StringCheck action = 6;
 }
 
 /// Policy 

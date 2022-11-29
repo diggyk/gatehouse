@@ -1033,6 +1033,8 @@ impl Datastore {
                     &req.target_type,
                     &target_attributes,
                     &req.target_action,
+                    &entity.attributes,
+                    &env_attributes,
                 ) {
                     // this target does not match
                     continue;

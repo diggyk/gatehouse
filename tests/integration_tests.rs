@@ -597,6 +597,8 @@ async fn test_polices() {
                 val_cmp: Set::Has.into(),
                 vals: vec![str("engage"), str("check"), str("read")],
             }),
+            match_in_entity: vec![],
+            match_in_env: vec![],
         }),
         Decide::Allow,
     )
@@ -838,6 +840,8 @@ async fn load_data() {
                 val_cmp: Set::Has.into(),
                 vals: vec![str("engage"), str("check"), str("read")],
             }),
+            match_in_entity: vec![],
+            match_in_env: vec![],
         }),
         Decide::Allow,
     )

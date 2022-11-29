@@ -262,9 +262,44 @@ pub(crate) struct TargetCheck {
     name: Option<StringCheck>,
     typestr: Option<StringCheck>,
     attributes: Vec<KvCheck>,
+    match_in_entity: Vec<String>,
+    match_in_env: Vec<String>,
     action: Option<StringCheck>,
 }
 impl TargetCheck {
+    /// see if one of our attribute values exists in another set of attribute values
+    fn check_attr_match(
+        &self,
+        attr_to_check: &str,
+        our_map: &HashMap<String, HashSet<String>>,
+        other_map: &HashMap<String, HashSet<String>>,
+    ) -> bool {
+        if !our_map.contains_key(attr_to_check) {
+            // the target itself doesn't contain the attribute we are supposed to match with the entity
+            return false;
+        }
+
+        if !other_map.contains_key(attr_to_check) {
+            // the entity doesn't contain the attribute we are supposed to check
+            return false;
+        }
+
+        let our_attr_vals: Vec<&String> = our_map.get(attr_to_check).unwrap().iter().collect();
+
+        let other_attr_vals: Vec<&String> = other_map.get(attr_to_check).unwrap().iter().collect();
+
+        if !our_attr_vals
+            .iter()
+            .any(|tav| other_attr_vals.contains(tav))
+        {
+            // we didn't find a single value in the target's attribute values that were also in the
+            // entity's attribute values
+            return false;
+        }
+
+        return true;
+    }
+
     /// perform a check against a potential entity
     pub fn check(
         &self,
@@ -272,6 +307,8 @@ impl TargetCheck {
         target_type: &str,
         target_attributes: &HashMap<String, HashSet<String>>,
         target_action: &str,
+        entity_attributes: &HashMap<String, HashSet<String>>,
+        env_attributes: &HashMap<String, HashSet<String>>,
     ) -> bool {
         if let Some(ref name_check) = self.name {
             if !name_check.check(target_name) {
@@ -292,6 +329,22 @@ impl TargetCheck {
             return false;
         }
 
+        // make sure every attribute that's supposed to match with the entity does match
+        for attr_to_check in &self.match_in_entity {
+            if !self.check_attr_match(attr_to_check, target_attributes, entity_attributes) {
+                // this attribute did not match between the target and the entity
+                return false;
+            }
+        }
+
+        // make sure every attribute that's supposed to match with the environment does match
+        for attr_to_check in &self.match_in_env {
+            if !self.check_attr_match(attr_to_check, target_attributes, env_attributes) {
+                // this attribute did not match between the target and the environment
+                return false;
+            }
+        }
+
         if let Some(action_check) = &self.action {
             if !action_check.check(target_action) {
                 // action does not match
@@ -309,6 +362,8 @@ impl From<protos::TargetCheck> for TargetCheck {
             name: tc.name.map(StringCheck::from),
             typestr: tc.typestr.map(StringCheck::from),
             attributes: tc.attributes.into_iter().map(KvCheck::from).collect(),
+            match_in_entity: tc.match_in_entity,
+            match_in_env: tc.match_in_env,
             action: tc.action.map(StringCheck::from),
         }
     }
@@ -323,6 +378,8 @@ impl From<TargetCheck> for protos::TargetCheck {
                 .into_iter()
                 .map(protos::KvCheck::from)
                 .collect(),
+            match_in_entity: tc.match_in_entity,
+            match_in_env: tc.match_in_env,
             action: tc.action.map(protos::StringCheck::from),
         }
     }
@@ -512,84 +569,212 @@ mod tests {
 
     #[test]
     fn test_targetcheck() {
-        let mut map: HashMap<String, HashSet<String>> = HashMap::new();
-        map.insert(
+        let mut target_attrs: HashMap<String, HashSet<String>> = HashMap::new();
+        target_attrs.insert(
             str("role"),
             HashSet::from_iter(vec![str("main"), str("backup")]),
         );
-        map.insert(str("env"), HashSet::from_iter(vec![str("test")]));
+        target_attrs.insert(str("env"), HashSet::from_iter(vec![str("test")]));
+
+        let mut entity_attrs: HashMap<String, HashSet<String>> = HashMap::new();
+        entity_attrs.insert(
+            str("office"),
+            HashSet::from_iter(vec![str("sfo"), str("remote")]),
+        );
+        entity_attrs.insert(
+            str("env"),
+            HashSet::from_iter(vec![str("test"), str("prod")]),
+        );
+
+        let mut env_attrs: HashMap<String, HashSet<String>> = HashMap::new();
+        env_attrs.insert(str("env"), HashSet::from_iter(vec![str("test")]));
 
         // test "any target should pass" check
         assert!(TargetCheck {
             name: None,
             typestr: None,
             attributes: vec![],
+            match_in_entity: vec![],
+            match_in_env: vec![],
             action: None,
         }
-        .check("bree", "db", &map, "read"));
+        .check(
+            "bree",
+            "db",
+            &target_attrs,
+            "read",
+            &entity_attrs,
+            &env_attrs
+        ));
 
         // test name
         assert!(TargetCheck {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: None,
             attributes: vec![],
+            match_in_entity: vec![],
+            match_in_env: vec![],
             action: None,
         }
-        .check("bree", "db", &map, "read"));
+        .check(
+            "bree",
+            "db",
+            &target_attrs,
+            "read",
+            &entity_attrs,
+            &env_attrs
+        ));
         assert!(!TargetCheck {
             name: Some(StringCheck::NotOneOf(vec![str("bree")])),
             typestr: None,
             attributes: vec![],
+            match_in_entity: vec![],
+            match_in_env: vec![],
             action: None,
         }
-        .check("bree", "db", &map, "read"));
+        .check(
+            "bree",
+            "db",
+            &target_attrs,
+            "read",
+            &entity_attrs,
+            &env_attrs
+        ));
 
         // test type
         assert!(TargetCheck {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![],
+            match_in_entity: vec![],
+            match_in_env: vec![],
             action: None,
         }
-        .check("bree", "db", &map, "read"));
+        .check(
+            "bree",
+            "db",
+            &target_attrs,
+            "read",
+            &entity_attrs,
+            &env_attrs
+        ));
         assert!(!TargetCheck {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("web")])),
             attributes: vec![],
+            match_in_entity: vec![],
+            match_in_env: vec![],
             action: None,
         }
-        .check("bree", "db", &map, "read"));
+        .check(
+            "bree",
+            "db",
+            &target_attrs,
+            "read",
+            &entity_attrs,
+            &env_attrs
+        ));
 
         // test attributes
         assert!(TargetCheck {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![KvCheck::Has(str("env"), vec![str("test")])],
+            match_in_entity: vec![],
+            match_in_env: vec![],
             action: None,
         }
-        .check("bree", "db", &map, "read"));
+        .check(
+            "bree",
+            "db",
+            &target_attrs,
+            "read",
+            &entity_attrs,
+            &env_attrs
+        ));
         assert!(!TargetCheck {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![KvCheck::Has(str("load"), vec![str("nominal")])],
+            match_in_entity: vec![],
+            match_in_env: vec![],
             action: None,
         }
-        .check("bree", "db", &map, "read"));
+        .check(
+            "bree",
+            "db",
+            &target_attrs,
+            "read",
+            &entity_attrs,
+            &env_attrs
+        ));
 
         // test target action
         assert!(TargetCheck {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![KvCheck::Has(str("env"), vec![str("test")])],
-            action: Some(StringCheck::OneOf(vec![str("read")])),
+            match_in_entity: vec![],
+            match_in_env: vec![],
+            action: Some(StringCheck::OneOf(vec![str("read"),])),
         }
-        .check("bree", "db", &map, "read"));
+        .check(
+            "bree",
+            "db",
+            &target_attrs,
+            "read",
+            &entity_attrs,
+            &env_attrs
+        ));
         assert!(!TargetCheck {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![KvCheck::Has(str("env"), vec![str("test")])],
+            match_in_entity: vec![],
+            match_in_env: vec![],
             action: Some(StringCheck::OneOf(vec![str("write")])),
         }
-        .check("bree", "db", &map, "read"));
+        .check(
+            "bree",
+            "db",
+            &target_attrs,
+            "read",
+            &entity_attrs,
+            &env_attrs
+        ));
+
+        // test match_in_entity
+        assert!(TargetCheck {
+            name: Some(StringCheck::OneOf(vec![str("bree")])),
+            typestr: Some(StringCheck::OneOf(vec![str("db")])),
+            attributes: vec![KvCheck::Has(str("env"), vec![str("test")])],
+            match_in_entity: vec![str("env")],
+            match_in_env: vec![],
+            action: Some(StringCheck::OneOf(vec![str("read"),])),
+        }
+        .check(
+            "bree",
+            "db",
+            &target_attrs,
+            "read",
+            &entity_attrs,
+            &env_attrs
+        ));
+        assert!(!TargetCheck {
+            name: Some(StringCheck::OneOf(vec![str("bree")])),
+            typestr: Some(StringCheck::OneOf(vec![str("db")])),
+            attributes: vec![KvCheck::Has(str("env"), vec![str("test")])],
+            match_in_entity: vec![str("role")],
+            match_in_env: vec![],
+            action: Some(StringCheck::OneOf(vec![str("read"),])),
+        }
+        .check(
+            "bree",
+            "db",
+            &target_attrs,
+            "read",
+            &entity_attrs,
+            &env_attrs
+        ));
     }
 }

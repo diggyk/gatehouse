@@ -74,11 +74,11 @@ Gatehouse then evaluates this request against the known policies for that `targe
 - [x] CRUD Groups and Group membership
 - [x] CRUD Roles
 - [x] CRUD Policies
-- [x] Integration test
 - [x] Policy engine
-- [ ] gRPC validation
 - [x] Unit tests
-- [ ] "MATCH_IN_ENV" and "MATCH_IN_ENT" matchers for Targets
+- [x] Integration test
+- [x] "MATCH_IN_ENV" and "MATCH_IN_ENT" matchers for Targets
+- [ ] gRPC validation
 - [ ] Overview stats RPC for total rules/etc
 
 # Additional ToDos
