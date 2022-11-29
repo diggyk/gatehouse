@@ -13,7 +13,7 @@ Gatehouse will also have an internal Entity Information Point to map entities to
 
 ## Targets
 
-A `target` in Gatehouse is composed of a `name`, `type`, and `attributes`. A `target` can have multiple `actions` associated with it. Each of these properties are opaque to Gatehouse: it does not care what the are but they will be used when evaluation policies to determine whether the `entity` passes or fails the access check.
+A `target` in Gatehouse is composed of a `name`, `type`, and `attributes`. A `target` can have multiple `actions` associated with it. Each of these properties are opaque to Gatehouse: it does not care what they are but they will be used when evaluating policies to determine whether the `entity` passes or fails the access check.
 
 For instance, you might have target types for various websites, infrastructure services, or even a target type for feature flags. The targets might have additional attributes such as environment (e.g. prod, dev, qa) and associated actions such as "read, "write," "admin," etc.
 
@@ -41,18 +41,18 @@ Along with the `entity` `attributes` supplied by the PEP and appended by Gatehou
 
 **Entity check:**
 
-* name is/isn't
-* type is/isn't
-* attribute has/hasn't value
+* name is/isn't in list of values
+* type is/isn't in list of values
+* attribute has/hasn't one of a list of values
 * bucket more/equal/less then value
 
 **Environment check:**
-* attribute has/hasn't value
+* attribute has/hasn't one of a list of values
 
 **Target check:**
-* name is/isn't
-* type is/isn't
-* attribute has/hasn't value
+* name is/isn't in a list of values
+* type is/isn't in a list of values
+* attribute has/hasn't one of a list of values
 * action is/isn't/any
 
 ## How a policy check works
