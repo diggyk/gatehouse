@@ -124,7 +124,7 @@ impl Display for StorageType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Nil => write!(f, "Nil"),
-            Self::FileSystem(path) => write!(f, "File system: Path {}", path),
+            Self::FileSystem(path) => write!(f, "File system({})", path),
         }
     }
 }

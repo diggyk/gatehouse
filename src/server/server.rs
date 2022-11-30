@@ -39,8 +39,8 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let svc = GatehouseSvc::new(&storage).await;
 
     println!("Starting Gatehouse server:");
-    println!("\x7f addr: {}", addr);
-    println!("\x7f storage: {}", storage);
+    println!("* addr: {}", addr);
+    println!("* storage: {}", storage);
 
     Server::builder()
         .accept_http1(true)
