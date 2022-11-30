@@ -13,7 +13,6 @@ use crate::cmds::{add_target, modify_target, remove_target};
 #[tokio::main]
 async fn main() {
     let args = Arguments::parse();
-    println!("{:?}", args);
 
     let mut client = GatehouseClient::connect(format!("http://{}:{}", args.host, args.port))
         .await

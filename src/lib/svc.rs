@@ -58,9 +58,9 @@ impl GatehouseSvc {
             return Err(Status::internal(err.to_string()));
         }
         tokio::select! {
-            _ = sleep(Duration::from_secs(10)) => {
+            _ = sleep(Duration::from_secs(30)) => {
                 // TODO! -- add metrics
-                eprintln!("Timeout waiting of target addition");
+                eprintln!("Timeout waiting of response");
                 Err(Status::deadline_exceeded("Timeout waiting for response from datastore"))
             },
             msg = rx => {
@@ -82,6 +82,8 @@ impl Gatehouse for GatehouseSvc {
     ) -> Result<Response<TargetResponse>, Status> {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
+
+        println!("svc: Add {}/{}", req.typestr, req.name);
 
         match self
             .call_datastore(DsRequest::AddTarget(req.clone(), tx), "add target", rx)

@@ -38,14 +38,14 @@ pub struct TargetCmdAddArgs {
     pub name: String,
     #[arg(
         long,
-        short,
+        short = 'a',
         required = false,
         help = "Repeat arg to specify multiple actions"
     )]
     pub actions: Vec<String>,
     #[arg(
         long,
-        short,
+        short = 't',
         required = false,
         help = "Attribute of format '{key}:{val1},{val2},{val3}'"
     )]
@@ -59,7 +59,7 @@ pub struct TargetCmdModifyArgs {
     #[arg(help = "Name (case-insensitive)")]
     pub name: String,
     #[arg(
-        long = "ax",
+        long = "aa",
         required = false,
         help = "Actions to add. Repeat arg to specify multiple actions"
     )]
@@ -71,7 +71,7 @@ pub struct TargetCmdModifyArgs {
     )]
     pub add_attribs: Vec<String>,
     #[arg(
-        long = "rx",
+        long = "ra",
         required = false,
         help = "Actions to remove. Repeat arg to specify multiple actions"
     )]
