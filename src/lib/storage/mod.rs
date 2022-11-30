@@ -8,6 +8,7 @@ use crate::policy::RegisteredPolicyRule;
 use crate::role::RegisteredRole;
 use crate::target::RegisteredTarget;
 
+pub(crate) mod etcd;
 pub(crate) mod file;
 pub(crate) mod nil;
 

@@ -7,11 +7,11 @@ edition = "2021"
 path = "src/lib/lib.rs"
 
 [[bin]]
-name = "gatehouse-server"
+name = "gatesrv"
 path = "src/server/server.rs"
 
 [[bin]]
-name = "gate"
+name = "gatecli"
 path = "src/cli/cli.rs"
 
 [dependencies]

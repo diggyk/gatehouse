@@ -5,6 +5,7 @@
 use std::fmt::Display;
 
 /// Gatehouse protobuf definitions
+#[allow(clippy::derive_partial_eq_without_eq)]
 pub mod proto {
     /// Common protobufs between other packages
     pub mod common {
@@ -119,13 +120,43 @@ pub enum StorageType {
     Nil,
     /// indicates a file backend should be used at the given path
     FileSystem(String),
+    /// indicates an Etcd backend should be used with the given url
+    Etcd(String),
 }
 impl Display for StorageType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Nil => write!(f, "Nil"),
             Self::FileSystem(path) => write!(f, "File system({})", path),
+            Self::Etcd(url) => write!(f, "Etcd({})", url),
         }
+    }
+}
+impl From<&str> for StorageType {
+    fn from(val: &str) -> Self {
+        Self::new(val)
+    }
+}
+impl From<String> for StorageType {
+    fn from(val: String) -> Self {
+        Self::new(&val)
+    }
+}
+impl StorageType {
+    fn new(val: &str) -> Self {
+        if let Some((typestr, val)) = val.split_once(':') {
+            match typestr.to_ascii_lowercase().as_str() {
+                "etcd" => return Self::Etcd(val.to_string()),
+                "file" => return Self::FileSystem(val.to_string()),
+                "nil" => return Self::Nil,
+                _ => {
+                    eprintln!("Unknown storage type: {}", typestr.to_ascii_lowercase());
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        Self::FileSystem("/tmp/gatehouse".to_string())
     }
 }
 

@@ -30,6 +30,7 @@ use crate::proto::targets::{
     AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
 };
 use crate::role::RegisteredRole;
+use crate::storage::etcd::EtcdStorage;
 use crate::storage::file::FileStorage;
 use crate::storage::nil::NilStorage;
 use crate::storage::Storage;
@@ -58,7 +59,8 @@ pub struct Datastore {
 impl Datastore {
     async fn new(backend: &StorageType, rx: Receiver<DsRequest>) -> Self {
         let backend: Box<dyn Storage + Send + Sync> = match backend {
-            StorageType::FileSystem(path) => Box::new(FileStorage::new(&path).await),
+            StorageType::Etcd(url) => Box::new(EtcdStorage::new(url).await),
+            StorageType::FileSystem(path) => Box::new(FileStorage::new(path).await),
             StorageType::Nil => Box::new(NilStorage {}),
         };
 

@@ -297,7 +297,7 @@ impl TargetCheck {
             return false;
         }
 
-        return true;
+        true
     }
 
     /// perform a check against a potential entity

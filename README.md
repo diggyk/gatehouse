@@ -65,6 +65,14 @@ Gatehouse then evaluates this request against the known policies for that `targe
 * if no matching policy is found, an implicit `DENY` is determined
 * if a matching `ALLOW` policy is found, then the decision will to be `ALLOW` unless...
 * if an explicit `DENY` policy is found, then the result will always be `DENY`
+
+# Running Gatehouse
+
+You can run `gatesrv` in a typical Linux environment.  By default, it will store data in `/tmp/gatehouse`
+To specify a different backend for storage, set `GATESTORAGE` environment variable to one of the following:
+
+* `file:{path}` store data on the filesystem at the given path
+* `etcd:{url}` store data in Etcd by connecting to the given URL
   
 
 # MVP ToDos
@@ -85,7 +93,8 @@ Gatehouse then evaluates this request against the known policies for that `targe
 
 - [ ] Tracing
 - [ ] Metrics
-- [ ] Etcd backend
+- [x] Etcd backend
+- [ ] Etcd watch for supporting multiserver deployment
 - [ ] Db backend
 - [ ] External information point (LDAP)
 - [ ] External information point (DB)
