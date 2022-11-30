@@ -10,9 +10,9 @@ path = "src/lib/lib.rs"
 name = "gatehouse-server"
 path = "src/server/server.rs"
 
-# [[bin]]
-# name = "gate"
-# path = "src/cli/cli.rs"
+[[bin]]
+name = "gate"
+path = "src/cli/cli.rs"
 
 [dependencies]
 clap       = { version = "4.0", features = ["derive"] }

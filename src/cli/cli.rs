@@ -8,7 +8,7 @@ mod args;
 mod cmds;
 
 use crate::args::{Arguments, Commands, TargetCmds};
-use crate::cmds::{add_target, add_target_action, remove_target, remove_target_action};
+use crate::cmds::{add_target, modify_target, remove_target};
 
 #[tokio::main]
 async fn main() {
@@ -22,8 +22,7 @@ async fn main() {
     match args.command {
         Commands::Target(target_args) => match target_args.target_cmds {
             TargetCmds::Add(args) => add_target(&mut client, args).await,
-            TargetCmds::AddAction(args) => add_target_action(&mut client, args).await,
-            TargetCmds::RemoveAction(args) => remove_target_action(&mut client, args).await,
+            TargetCmds::Modify(args) => modify_target(&mut client, args).await,
             TargetCmds::Remove(args) => remove_target(&mut client, args).await,
         },
     }
