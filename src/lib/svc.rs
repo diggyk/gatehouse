@@ -38,8 +38,8 @@ pub struct GatehouseSvc {
 
 impl GatehouseSvc {
     /// Create a new Gatehouse service
-    pub async fn new() -> Self {
-        let dstx = Datastore::create(StorageType::FileSystem("/tmp/gatehouse".to_string())).await;
+    pub async fn new(storage: &StorageType) -> Self {
+        let dstx = Datastore::create(storage).await;
         GatehouseSvc { dstx }
     }
 }

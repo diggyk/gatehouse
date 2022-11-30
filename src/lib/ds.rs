@@ -37,7 +37,7 @@ use crate::target::RegisteredTarget;
 
 pub struct Datastore {
     rx: flume::Receiver<DsRequest>,
-    backend: Box<dyn Storage + Send + Sync>,
+    storage: Box<dyn Storage + Send + Sync>,
 
     /// HashMap from type string to HashMap of name to registered target
     targets: Arc<RwLock<HashMap<String, HashMap<String, RegisteredTarget>>>>,
@@ -56,7 +56,7 @@ pub struct Datastore {
 }
 
 impl Datastore {
-    async fn new(backend: StorageType, rx: Receiver<DsRequest>) -> Self {
+    async fn new(backend: &StorageType, rx: Receiver<DsRequest>) -> Self {
         let backend: Box<dyn Storage + Send + Sync> = match backend {
             StorageType::FileSystem(path) => Box::new(FileStorage::new(&path).await),
             StorageType::Nil => Box::new(NilStorage {}),
@@ -89,7 +89,7 @@ impl Datastore {
 
         Datastore {
             rx,
-            backend,
+            storage: backend,
             targets: Arc::new(RwLock::new(targets)),
             entities: Arc::new(RwLock::new(entities)),
             roles: Arc::new(RwLock::new(roles)),
@@ -99,7 +99,7 @@ impl Datastore {
     }
 
     /// How the datastore is actually created, returning only the sender channel
-    pub(crate) async fn create(backend: StorageType) -> flume::Sender<DsRequest> {
+    pub(crate) async fn create(backend: &StorageType) -> flume::Sender<DsRequest> {
         let (tx, rx) = flume::unbounded();
         let ds = Self::new(backend, rx).await;
 
@@ -218,7 +218,7 @@ impl Datastore {
 
         let new_target = RegisteredTarget::new(&name, &typestr, req.actions, attributes);
 
-        match self.backend.save_target(&new_target).await {
+        match self.storage.save_target(&new_target).await {
             Ok(_) => {
                 let mut targets = self.targets.write().await;
                 let typed_targets = targets.get_mut(&typestr).unwrap();
@@ -296,7 +296,7 @@ impl Datastore {
             }
         }
 
-        match self.backend.save_target(&updated_target).await {
+        match self.storage.save_target(&updated_target).await {
             Ok(_) => {
                 let mut targets = self.targets.write().await;
                 let typed_targets = targets.get_mut(&typestr).unwrap();
@@ -345,7 +345,7 @@ impl Datastore {
         drop(targets);
 
         // try to persist the new target to the backend and if that succeeds, update it in memory
-        match self.backend.remove_target(&existing_target).await {
+        match self.storage.remove_target(&existing_target).await {
             Ok(_) => {
                 let mut targets = self.targets.write().await;
                 let typed_targets = targets.get_mut(&typestr).unwrap();
@@ -418,7 +418,7 @@ impl Datastore {
 
         let new_entity = RegisteredEntity::new(&name, &typestr, attributes);
 
-        match self.backend.save_entity(&new_entity).await {
+        match self.storage.save_entity(&new_entity).await {
             Ok(_) => {
                 let mut entities = self.entities.write().await;
                 let typed_entities = entities.get_mut(&typestr).unwrap();
@@ -488,7 +488,7 @@ impl Datastore {
             }
         }
 
-        match self.backend.save_entity(&updated_entity).await {
+        match self.storage.save_entity(&updated_entity).await {
             Ok(_) => {
                 let mut entities = self.entities.write().await;
                 let typed_entities = entities.get_mut(&typestr).unwrap();
@@ -538,7 +538,7 @@ impl Datastore {
         drop(entities);
 
         // try to persist the new target to the backend and if that succeeds, update it in memory
-        match self.backend.remove_entity(&existing_entity).await {
+        match self.storage.remove_entity(&existing_entity).await {
             Ok(_) => {
                 let mut entities = self.entities.write().await;
                 let typed_entities = entities.get_mut(&typestr).unwrap();
@@ -601,7 +601,7 @@ impl Datastore {
         }
 
         // try to persist the new role to the backend and if that succeeds, update it in memory
-        match self.backend.save_role(&new_role).await {
+        match self.storage.save_role(&new_role).await {
             Ok(_) => {
                 let _ = self
                     .roles
@@ -643,7 +643,7 @@ impl Datastore {
         }
 
         // try to remove the new role from the backend and if that succeeds, update it in memory
-        match self.backend.remove_role(&existing_role.name).await {
+        match self.storage.remove_role(&existing_role.name).await {
             Ok(_) => {
                 let _ = self.roles.write().await.remove(&role);
             }
@@ -656,7 +656,7 @@ impl Datastore {
 
         // persist the updated groups
         for updated_group in updated_groups {
-            if let Err(err) = self.backend.save_group(&updated_group).await {
+            if let Err(err) = self.storage.save_group(&updated_group).await {
                 // TODO! -- do something with error
                 eprintln!(
                     "Persistence issue! Group {} could not be saved after removing role {}: {}",
@@ -738,7 +738,7 @@ impl Datastore {
         let new_group = RegisteredGroup::new(&name, req.desc, members, roles);
 
         // try to save the group first and then if that works, update the roles and persist them
-        if let Err(err) = self.backend.save_group(&new_group).await {
+        if let Err(err) = self.storage.save_group(&new_group).await {
             // TODO! -- do something with error
             let _ = tx.send(DsResponse::Error(Status::internal(err)));
             return;
@@ -751,7 +751,7 @@ impl Datastore {
 
         for found_role in found_roles {
             // if this fails, we have a referential integrity problem
-            if let Err(err) = self.backend.save_role(&found_role).await {
+            if let Err(err) = self.storage.save_role(&found_role).await {
                 // TODO! -- really alert on this error
                 eprintln!("Referential integrity issue: role {} could not be saved after adding to group {}: {}", found_role.name, &name, err);
             }
@@ -834,7 +834,7 @@ impl Datastore {
         }
 
         // try to save the group first and then if that works, update the roles and persist them
-        if let Err(err) = self.backend.save_group(&updated_group).await {
+        if let Err(err) = self.storage.save_group(&updated_group).await {
             // TODO! -- do something with error
             let _ = tx.send(DsResponse::Error(Status::internal(err)));
             return;
@@ -847,7 +847,7 @@ impl Datastore {
 
         for found_role in found_roles {
             // if this fails, we have a referential integrity problem
-            if let Err(err) = self.backend.save_role(&found_role).await {
+            if let Err(err) = self.storage.save_role(&found_role).await {
                 // TODO! -- really alert on this error
                 eprintln!("Referential integrity issue: role {} could not be saved after adding to group {}: {}", found_role.name, &name, err);
             }
@@ -895,7 +895,7 @@ impl Datastore {
         }
 
         // try to delete the group first and then if that works, update the roles and persist them
-        if let Err(err) = self.backend.remove_group(&existing_group.name).await {
+        if let Err(err) = self.storage.remove_group(&existing_group.name).await {
             // TODO! -- do something with error
             let _ = tx.send(DsResponse::Error(Status::internal(err)));
             return;
@@ -904,7 +904,7 @@ impl Datastore {
         // update the roles so they are no longer pointing to this deleted group
         for found_role in found_roles {
             // if this fails, we have a referential integrity problem
-            if let Err(err) = self.backend.save_role(&found_role).await {
+            if let Err(err) = self.storage.save_role(&found_role).await {
                 // TODO! -- really alert on this error
                 eprintln!("Referential integrity issue: role {} could not be saved after adding to group {}: {}", found_role.name, &name, err);
             }
@@ -979,7 +979,7 @@ impl Datastore {
         let new_policy: RegisteredPolicyRule = rule.clone().into();
 
         // try to persist the new policy to the backend and if that succeeds, update it in memory
-        match self.backend.save_policy(&new_policy).await {
+        match self.storage.save_policy(&new_policy).await {
             Ok(_) => {
                 let _ = self
                     .policies
@@ -1025,7 +1025,7 @@ impl Datastore {
         let updated_policy: RegisteredPolicyRule = rule.clone().into();
 
         // try to persist the new policy to the backend and if that succeeds, update it in memory
-        match self.backend.save_policy(&updated_policy).await {
+        match self.storage.save_policy(&updated_policy).await {
             Ok(_) => {
                 let _ = self
                     .policies
@@ -1061,7 +1061,7 @@ impl Datastore {
         let existing_policy = self.policies.read().await.get(&name).unwrap().to_owned();
 
         // try to remove the policy from backend before updating memory
-        match self.backend.remove_policy(&name).await {
+        match self.storage.remove_policy(&name).await {
             Ok(_) => {
                 let _ = self.policies.write().await.remove(&name);
             }
@@ -1253,7 +1253,7 @@ mod tests {
     async fn test_targets() {
         let (_, rx) = flume::unbounded();
         let (tx, _) = channel::<DsResponse>();
-        let ds = Datastore::new(StorageType::Nil, rx).await;
+        let ds = Datastore::new(&StorageType::Nil, rx).await;
 
         let mut map: HashMap<String, AttributeValues> = HashMap::new();
         map.insert(

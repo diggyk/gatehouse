@@ -1,6 +1,8 @@
 mod common;
 
-use tokio::time::Duration;
+use std::process::exit;
+
+use tokio::time::{sleep, Duration};
 
 use gatehouse::proto::policies::{
     Decide, EntityCheck, KvCheck, Num, NumberCheck, Set, StringCheck, TargetCheck,
@@ -14,11 +16,12 @@ use gatehouse::helpers::{
     get_policies, get_roles, get_targets, modify_entity, modify_group, modify_policy,
     modify_target, remove_entity, remove_group, remove_policy, remove_role, remove_target, str,
 };
+use tonic::transport::Channel;
 
 #[test]
 async fn test_crud() {
     let handle = tokio::spawn(common::run_server());
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    sleep(Duration::from_secs(5)).await;
 
     test_targets().await;
     test_entities().await;
@@ -27,18 +30,33 @@ async fn test_crud() {
     test_polices().await;
 
     handle.abort();
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    sleep(Duration::from_secs(5)).await;
 
     tokio::spawn(common::run_server());
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    sleep(Duration::from_secs(5)).await;
 
     load_data().await;
 }
 
+async fn create_client() -> GatehouseClient<Channel> {
+    let mut attempts = 0;
+    loop {
+        match GatehouseClient::connect("http://localhost:6174").await {
+            Ok(client) => return client,
+            Err(err) => {
+                attempts += 1;
+
+                if attempts > 5 {
+                    println!("Could not create client: {err}");
+                    exit(1);
+                }
+            }
+        }
+    }
+}
+
 async fn test_targets() {
-    let mut client = GatehouseClient::connect("http://localhost:6174")
-        .await
-        .expect("could not create client");
+    let mut client = create_client().await;
 
     // ensure we have no targets at the start
     let targets = get_targets(&mut client, None, None).await.unwrap();
@@ -214,9 +232,7 @@ async fn test_targets() {
 }
 
 async fn test_entities() {
-    let mut client = GatehouseClient::connect("http://localhost:6174")
-        .await
-        .expect("could not create client");
+    let mut client = create_client().await;
 
     // ensure we have no entities at the start
     let entities = get_entities(&mut client, None, None).await.unwrap();
@@ -358,9 +374,7 @@ async fn test_entities() {
 }
 
 async fn test_roles() {
-    let mut client = GatehouseClient::connect("http://localhost:6174")
-        .await
-        .expect("could not create client");
+    let mut client = create_client().await;
 
     let roles = get_roles(&mut client, None).await.unwrap();
     assert_eq!(roles.len(), 0, "expected 0 roles");
@@ -383,9 +397,7 @@ async fn test_roles() {
 }
 
 async fn test_groups() {
-    let mut client = GatehouseClient::connect("http://localhost:6174")
-        .await
-        .expect("could not create client");
+    let mut client = create_client().await;
 
     let role1 = add_role(&mut client, "admin").await.unwrap();
     let role2 = add_role(&mut client, "user").await.unwrap();
@@ -485,9 +497,7 @@ async fn test_groups() {
 }
 
 async fn test_polices() {
-    let mut client = GatehouseClient::connect("http://localhost:6174")
-        .await
-        .expect("could not create client");
+    let mut client = create_client().await;
 
     let pol1 = add_policy(
         &mut client,
@@ -650,9 +660,7 @@ async fn test_polices() {
 }
 
 async fn load_data() {
-    let mut client = GatehouseClient::connect("http://localhost:6174")
-        .await
-        .expect("could not create client");
+    let mut client = create_client().await;
 
     add_target(
         &mut client,

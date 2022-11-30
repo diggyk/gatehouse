@@ -2,6 +2,8 @@
 
 //! Gatehouse libraries
 
+use std::fmt::Display;
+
 /// Gatehouse protobuf definitions
 pub mod proto {
     /// Common protobufs between other packages
@@ -117,6 +119,14 @@ pub enum StorageType {
     Nil,
     /// indicates a file backend should be used at the given path
     FileSystem(String),
+}
+impl Display for StorageType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Nil => write!(f, "Nil"),
+            Self::FileSystem(path) => write!(f, "File system: Path {}", path),
+        }
+    }
 }
 
 pub(crate) mod ds;
