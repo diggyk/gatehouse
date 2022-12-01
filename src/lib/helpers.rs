@@ -116,13 +116,13 @@ pub async fn remove_target(
 }
 
 /// Get all targets
-pub async fn get_targets(
+pub async fn get_targets<S: Into<String>>(
     client: &mut GatehouseClient<Channel>,
-    name: Option<&str>,
-    typestr: Option<&str>,
+    name: Option<S>,
+    typestr: Option<S>,
 ) -> Result<Vec<Target>, String> {
-    let name = name.map(str);
-    let typestr = typestr.map(str);
+    let name = name.map(|str| str.into());
+    let typestr = typestr.map(|str| str.into());
 
     Ok(client
         .get_targets(GetTargetsRequest { name, typestr })

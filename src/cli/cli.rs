@@ -1,7 +1,9 @@
 extern crate clap;
 
+use args::Target;
 use clap::Parser;
 
+use cmds::get_targets;
 use gatehouse::proto::base::gatehouse_client::GatehouseClient;
 
 mod args;
@@ -23,6 +25,7 @@ async fn main() {
             TargetCmds::Add(args) => add_target(&mut client, args).await,
             TargetCmds::Modify(args) => modify_target(&mut client, args).await,
             TargetCmds::Remove(args) => remove_target(&mut client, args).await,
+            TargetCmds::Search(args) => get_targets(&mut client, args).await,
         },
     }
 }

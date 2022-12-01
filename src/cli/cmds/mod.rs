@@ -3,7 +3,9 @@ use tonic::transport::Channel;
 use gatehouse::helpers;
 use gatehouse::proto::base::gatehouse_client::GatehouseClient;
 
-use crate::args::{TargetCmdAddArgs, TargetCmdModifyArgs, TargetCmdRemoveArgs};
+use crate::args::{
+    TargetCmdAddArgs, TargetCmdModifyArgs, TargetCmdRemoveArgs, TargetCmdSearchArgs,
+};
 
 /// convert attributes passed into what the helper expects
 fn form_attributes(attr_args: &[String]) -> Vec<(String, Vec<&str>)> {
@@ -53,6 +55,18 @@ pub async fn modify_target(client: &mut GatehouseClient<Channel>, args: TargetCm
     {
         Ok(target) => println!("Added {target}"),
         Err(err) => eprintln!("Error: {err}"),
+    }
+}
+
+pub async fn get_targets(client: &mut GatehouseClient<Channel>, args: TargetCmdSearchArgs) {
+    match helpers::get_targets(client, args.name, args.typestr).await {
+        Ok(targets) => {
+            println!("Got {} targets:", targets.len());
+            for target in targets {
+                println!("{target}");
+            }
+        }
+        Err(err) => println!("Error: {err}"),
     }
 }
 

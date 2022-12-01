@@ -28,6 +28,7 @@ pub enum TargetCmds {
     Add(TargetCmdAddArgs),
     Modify(TargetCmdModifyArgs),
     Remove(TargetCmdRemoveArgs),
+    Search(TargetCmdSearchArgs),
 }
 
 #[derive(Args, Debug)]
@@ -82,6 +83,14 @@ pub struct TargetCmdModifyArgs {
         help = "Attributes to remove. Attribute of format '{key}:{val1},{val2},{val3}'"
     )]
     pub remove_attribs: Vec<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct TargetCmdSearchArgs {
+    #[arg(help = "Type (case-insensitive)", required = false)]
+    pub typestr: Option<String>,
+    #[arg(help = "Name (case-insensitive)", required = false)]
+    pub name: Option<String>,
 }
 
 #[derive(Args, Debug)]

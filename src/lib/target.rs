@@ -67,7 +67,7 @@ impl Display for RegisteredTarget {
             .iter()
             .map(|kv| {
                 format!(
-                    " {}: {}",
+                    "{}: {}",
                     kv.0,
                     kv.1.iter()
                         .map(|v| v.to_string())
@@ -76,17 +76,17 @@ impl Display for RegisteredTarget {
                 )
             })
             .collect::<Vec<String>>()
-            .join(" ");
+            .join("; ");
         write!(
             f,
-            "tgt[{}/{}]: {} // {}",
+            "tgt[{}/{}]: actions:: {} // attribs:: {}",
             self.typestr,
             self.name,
             self.actions
                 .iter()
                 .map(|s| s.to_string())
                 .collect::<Vec<String>>()
-                .join(","),
+                .join(", "),
             attribvals
         )
     }
