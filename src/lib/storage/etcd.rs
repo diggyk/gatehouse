@@ -226,10 +226,7 @@ impl EtcdStorage {
                     }
                     "groups" => Ok(BackendUpdate::DeleteGroup(obj_name.to_string())),
                     "policies" => Ok(BackendUpdate::DeletePolicyRule(obj_name.to_string())),
-                    "roles" => {
-                        let obj: RegisteredRole = serde_json::from_str(val).map_err(econv)?;
-                        Ok(BackendUpdate::DeleteRole(obj_name.to_string()))
-                    }
+                    "roles" => Ok(BackendUpdate::DeleteRole(obj_name.to_string())),
                     "targets" => {
                         let (typestr, name) = obj_name.split_once('/').ok_or_else(|| {
                             format!("Could not get type and name from target {obj_name}")
@@ -276,9 +273,10 @@ impl EtcdStorage {
                 val,
             )?;
 
-            req_tx.send_async(DsRequest::Update(update)).await;
-
-            Ok(())
+            req_tx
+                .send_async(DsRequest::Update(update))
+                .await
+                .map_err(econv)
         }
 
         loop {
@@ -308,7 +306,9 @@ impl EtcdStorage {
                         }
 
                         for event in msg.events() {
-                            handle_event(event, &req_tx).await;
+                            if let Err(err) = handle_event(event, &req_tx).await {
+                                eprintln!("Error handling event {:?}: {}", event, err);
+                            }
                         }
                     }
                 },
