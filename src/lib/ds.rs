@@ -57,9 +57,13 @@ pub struct Datastore {
 }
 
 impl Datastore {
-    async fn new(backend: &StorageType, rx: Receiver<DsRequest>) -> Self {
+    async fn new(
+        backend: &StorageType,
+        req_tx: flume::Sender<DsRequest>,
+        req_rx: Receiver<DsRequest>,
+    ) -> Self {
         let backend: Box<dyn Storage + Send + Sync> = match backend {
-            StorageType::Etcd(url) => Box::new(EtcdStorage::new(url).await),
+            StorageType::Etcd(url) => Box::new(EtcdStorage::new(url, req_tx).await),
             StorageType::FileSystem(path) => Box::new(FileStorage::new(path).await),
             StorageType::Nil => Box::new(NilStorage {}),
         };
@@ -90,7 +94,7 @@ impl Datastore {
             .expect("Could not load policies from backend");
 
         Datastore {
-            rx,
+            rx: req_rx,
             storage: backend,
             targets: Arc::new(RwLock::new(targets)),
             entities: Arc::new(RwLock::new(entities)),
@@ -102,15 +106,15 @@ impl Datastore {
 
     /// How the datastore is actually created, returning only the sender channel
     pub(crate) async fn create(backend: &StorageType) -> flume::Sender<DsRequest> {
-        let (tx, rx) = flume::unbounded();
-        let ds = Self::new(backend, rx).await;
+        let (req_tx, req_rx) = flume::unbounded();
+        let ds = Self::new(backend, req_tx.clone(), req_rx).await;
 
         let arc_ds = Arc::new(ds);
         tokio::spawn(async move {
             arc_ds.run().await;
         });
 
-        tx
+        req_tx
     }
 
     /// Our main run loop.  We listen to incoming messages from the server and respond accordingly
@@ -1253,9 +1257,9 @@ mod tests {
 
     #[test]
     async fn test_targets() {
-        let (_, rx) = flume::unbounded();
+        let (req_tx, req_rx) = flume::unbounded();
         let (tx, _) = channel::<DsResponse>();
-        let ds = Datastore::new(&StorageType::Nil, rx).await;
+        let ds = Datastore::new(&StorageType::Nil, req_tx, req_rx).await;
 
         let mut map: HashMap<String, AttributeValues> = HashMap::new();
         map.insert(

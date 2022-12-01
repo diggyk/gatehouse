@@ -2,19 +2,26 @@ use std::collections::HashMap;
 use std::process::exit;
 use std::sync::Arc;
 
-use etcd_client::{Client, GetOptions, WatchOptions, WatchStream};
+use etcd_client::{Client, Event, GetOptions, WatchOptions, WatchStream};
 use flume::Receiver;
+use lazy_static::lazy_static;
+use regex::Regex;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 use tonic::async_trait;
 
 use crate::entity::RegisteredEntity;
 use crate::group::RegisteredGroup;
+use crate::msgs::DsRequest;
 use crate::policy::RegisteredPolicyRule;
 use crate::role::RegisteredRole;
 use crate::target::RegisteredTarget;
 
 use super::Storage;
+
+lazy_static! {
+    static ref TYPE_MATCH: Regex = Regex::new(r"/gatehouse/(.*?)/.*").unwrap();
+}
 
 fn econv<T: std::fmt::Display>(err: T) -> String {
     err.to_string()
@@ -26,7 +33,7 @@ pub(crate) struct EtcdStorage {
 }
 
 impl EtcdStorage {
-    pub async fn new(url: &str) -> Self {
+    pub async fn new(url: &str, req_tx: flume::Sender<DsRequest>) -> Self {
         let mut client = match Client::connect([url], None).await {
             Ok(client) => client,
             Err(err) => {
@@ -66,7 +73,7 @@ impl EtcdStorage {
         let basepath_copy = basepath.clone();
         let client_copy = client.clone();
         tokio::spawn(async move {
-            EtcdStorage::watch_manager(client_copy, &basepath_copy, last_rev_arc).await
+            EtcdStorage::watch_manager(client_copy, &basepath_copy, last_rev_arc, req_tx).await
         });
 
         Self { basepath, client }
@@ -74,9 +81,21 @@ impl EtcdStorage {
 
     /// The watch manager establishes the watch on Etcd and reestablishs the watch if connectivity
     /// is broken.
-    async fn watch_manager(mut client: Client, basepath: &str, last_rev: Arc<Mutex<i64>>) {
+    ///
+    /// Args:
+    /// * client: Etcd client
+    /// * basepath: the key prefix underwhich Gatehouse stores data
+    /// * last_rev: the last revision number we processed, and where we start watch on restart
+    /// * req_tx: our channel to send updates to the datastore
+    async fn watch_manager(
+        mut client: Client,
+        basepath: &str,
+        last_rev: Arc<Mutex<i64>>,
+        req_tx: flume::Sender<DsRequest>,
+    ) {
         loop {
             println!("STARTING WATCH AT {}", last_rev.lock().await);
+            // start the watch
             let (mut watcher, watch_stream) = match client
                 .watch(
                     basepath,
@@ -98,10 +117,14 @@ impl EtcdStorage {
                 }
             };
 
+            // start our stream watcher that will listen for new updates from Etcd
             let last_rev_copy = last_rev.clone();
             let (kill_signal, kill_receiver) = flume::bounded(1);
+            let req_tx_clone = req_tx.clone();
             let stream_watcher = tokio::spawn(async move {
-                match Self::watch_changes(watch_stream, last_rev_copy, kill_receiver).await {
+                match Self::watch_changes(watch_stream, last_rev_copy, kill_receiver, req_tx_clone)
+                    .await
+                {
                     Ok(_) => println!("stream watched exited normally"),
                     Err(err) => println!("stream watch exited with error: {err}"),
                 }
@@ -124,6 +147,9 @@ impl EtcdStorage {
                 }
             }
 
+            // we have exited out ping loop because the watch stream stopped or we got
+            // an error sending a request_progress, meaning our stream died. We will
+            // try to kill the stream_watcher if it is still running
             if !stream_watcher.is_finished() {
                 match kill_signal.send(()) {
                     Err(err) => {
@@ -154,7 +180,54 @@ impl EtcdStorage {
         mut stream: WatchStream,
         last_rev: Arc<Mutex<i64>>,
         kill_receiver: Receiver<()>,
+        req_tx: flume::Sender<DsRequest>,
     ) -> Result<(), String> {
+        async fn handle_event(event: &Event, req_tx: &flume::Sender<DsRequest>) {
+            if event.kv().is_none() {
+                // TODO -- this is a weird bug so not sure what to do. Log it?
+                return;
+            }
+
+            let kv = event.kv().unwrap();
+            let key = match kv.key_str() {
+                Err(e) => {
+                    eprintln!("Invalid key: {e} {:?}", kv.key());
+                    return;
+                }
+                Ok(key) => key,
+            };
+            let val = match kv.value_str() {
+                Err(e) => {
+                    eprintln!("Invalid val: {e} {:?}", kv.value());
+                    return;
+                }
+                Ok(val) => val,
+            };
+
+            let caps = TYPE_MATCH.captures(key);
+            if caps.is_none() {
+                eprintln!("Could not determine the type from key: {key}");
+                return;
+            }
+
+            let obj_type = caps.unwrap().get(1);
+            if obj_type.is_none() {
+                eprintln!("Did not get object type from key: {key}");
+                return;
+            }
+
+            println!("OBJECT TYPE: {}", obj_type.unwrap().as_str());
+
+            match event.event_type() {
+                etcd_client::EventType::Put => {
+                    println!("Add: {}\n{}\n\n", key, val);
+                }
+                etcd_client::EventType::Delete => {
+                    println!("Delete: {}\n{}\n\n", key, val);
+                }
+            }
+        }
+
         loop {
             if !kill_receiver.is_empty() || kill_receiver.is_disconnected() {
                 break;
@@ -182,14 +255,7 @@ impl EtcdStorage {
                         }
 
                         for event in msg.events() {
-                            println!("Got event of {:?}", event.event_type());
-                            if let Some(kv) = event.kv() {
-                                println!(
-                                    "  key: {}  val: {}",
-                                    kv.key_str().map_err(econv)?,
-                                    kv.value_str().map_err(econv)?
-                                );
-                            }
+                            handle_event(event, &req_tx).await;
                         }
                     }
                 },
