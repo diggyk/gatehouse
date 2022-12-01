@@ -94,7 +94,7 @@ To specify a different backend for storage, set `GATESTORAGE` environment variab
 - [ ] Tracing
 - [ ] Metrics
 - [x] Etcd backend
-- [ ] Etcd watch for supporting multiserver deployment
+- [x] Etcd watch for supporting multiserver deployment
 - [ ] Db backend
 - [ ] External information point (LDAP)
 - [ ] External information point (DB)
