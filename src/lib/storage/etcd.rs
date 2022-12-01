@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 use tonic::async_trait;
 
-use crate::entity::RegisteredEntity;
+use crate::actor::RegisteredActor;
 use crate::group::RegisteredGroup;
 use crate::msgs::DsRequest;
 use crate::policy::RegisteredPolicyRule;
@@ -316,49 +316,49 @@ impl Storage for EtcdStorage {
 
         Ok(map)
     }
-    async fn save_entity(&self, tgt: &RegisteredEntity) -> Result<(), String> {
-        let entity_path = format!("{}/entities/{}/{}", self.basepath, tgt.typestr, tgt.name);
+    async fn save_actor(&self, tgt: &RegisteredActor) -> Result<(), String> {
+        let actor_path = format!("{}/actors/{}/{}", self.basepath, tgt.typestr, tgt.name);
 
         let json = serde_json::to_string(&tgt).map_err(|err| err.to_string())?;
 
         self.client
             .kv_client()
-            .put(entity_path, json, None)
+            .put(actor_path, json, None)
             .await
             .map_err(econv)?;
         Ok(())
     }
-    async fn remove_entity(&self, tgt: &RegisteredEntity) -> Result<(), String> {
-        let entity_path = format!("{}/entities/{}/{}", self.basepath, tgt.typestr, tgt.name);
+    async fn remove_actor(&self, tgt: &RegisteredActor) -> Result<(), String> {
+        let actor_path = format!("{}/actors/{}/{}", self.basepath, tgt.typestr, tgt.name);
 
         self.client
             .kv_client()
-            .delete(entity_path, None)
+            .delete(actor_path, None)
             .await
             .map_err(econv)?;
 
         Ok(())
     }
-    async fn load_entities(
+    async fn load_actors(
         &self,
-    ) -> Result<HashMap<String, HashMap<String, RegisteredEntity>>, String> {
-        let entities_path = format!("{}/entities", self.basepath);
+    ) -> Result<HashMap<String, HashMap<String, RegisteredActor>>, String> {
+        let actors_path = format!("{}/actors", self.basepath);
 
         let results = self
             .client
             .kv_client()
-            .get(entities_path, Some(GetOptions::new().with_prefix()))
+            .get(actors_path, Some(GetOptions::new().with_prefix()))
             .await
             .map_err(econv)?;
 
         let mut map = HashMap::new();
         for kv in results.kvs() {
             let val = std::str::from_utf8(kv.value()).map_err(econv)?;
-            let entity: RegisteredEntity = serde_json::from_str(val).map_err(econv)?;
-            let typed_entities = map
-                .entry(entity.typestr.clone())
+            let actor: RegisteredActor = serde_json::from_str(val).map_err(econv)?;
+            let typed_actors = map
+                .entry(actor.typestr.clone())
                 .or_insert_with(HashMap::new);
-            typed_entities.insert(entity.name.clone(), entity);
+            typed_actors.insert(actor.name.clone(), actor);
         }
 
         Ok(map)

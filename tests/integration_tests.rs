@@ -5,16 +5,16 @@ use std::process::exit;
 use tokio::time::{sleep, Duration};
 
 use gatehouse::proto::policies::{
-    Decide, EntityCheck, KvCheck, Num, NumberCheck, Set, StringCheck, TargetCheck,
+    ActorCheck, Decide, KvCheck, Num, NumberCheck, Set, StringCheck, TargetCheck,
 };
 use tokio::test;
 
 use gatehouse::proto::base::gatehouse_client::GatehouseClient;
 
 use gatehouse::helpers::{
-    add_entity, add_group, add_policy, add_role, add_target, get_entities, get_groups,
-    get_policies, get_roles, get_targets, modify_entity, modify_group, modify_policy,
-    modify_target, remove_entity, remove_group, remove_policy, remove_role, remove_target, str,
+    add_actor, add_group, add_policy, add_role, add_target, get_actors, get_groups, get_policies,
+    get_roles, get_targets, modify_actor, modify_group, modify_policy, modify_target, remove_actor,
+    remove_group, remove_policy, remove_role, remove_target, str,
 };
 use tonic::transport::Channel;
 
@@ -24,7 +24,7 @@ async fn test_crud() {
     sleep(Duration::from_secs(5)).await;
 
     test_targets().await;
-    test_entities().await;
+    test_actors().await;
     test_roles().await;
     test_groups().await;
     test_polices().await;
@@ -231,24 +231,24 @@ async fn test_targets() {
     assert_eq!(tgt3.actions[0], "login");
 }
 
-async fn test_entities() {
+async fn test_actors() {
     let mut client = create_client().await;
 
-    // ensure we have no entities at the start
-    let entities = get_entities(&mut client, None, None).await.unwrap();
+    // ensure we have no actors at the start
+    let actors = get_actors(&mut client, None, None).await.unwrap();
 
-    assert_eq!(entities.len(), 0, "entities should have been 0");
+    assert_eq!(actors.len(), 0, "actors should have been 0");
 
-    // add a entity
-    let ent1 = add_entity(&mut client, "testman1", "user", vec![])
+    // add a actor
+    let ent1 = add_actor(&mut client, "testman1", "user", vec![])
         .await
         .unwrap();
     assert_eq!(ent1.name, "testman1");
     assert_eq!(ent1.typestr, "user");
     assert!(ent1.attributes.is_empty());
 
-    // add some more entities
-    let ent2 = add_entity(
+    // add some more actors
+    let ent2 = add_actor(
         &mut client,
         "sandytest",
         "user",
@@ -256,38 +256,34 @@ async fn test_entities() {
     )
     .await
     .unwrap();
-    let _ = add_entity(&mut client, "logger", "svc", vec![])
+    let _ = add_actor(&mut client, "logger", "svc", vec![])
         .await
         .unwrap();
-    let _ = add_entity(&mut client, "launcher", "svc", vec![])
+    let _ = add_actor(&mut client, "launcher", "svc", vec![])
         .await
         .unwrap();
-    let _ = add_entity(&mut client, "printer", "svc", vec![])
+    let _ = add_actor(&mut client, "printer", "svc", vec![])
         .await
         .unwrap();
     assert!(ent2.attributes.contains_key("org"));
 
-    // make sure all the entities are there
-    let entities = get_entities(&mut client, None, None).await.unwrap();
-    assert_eq!(entities.len(), 5, "expected 5 entities");
+    // make sure all the actors are there
+    let actors = get_actors(&mut client, None, None).await.unwrap();
+    assert_eq!(actors.len(), 5, "expected 5 actors");
 
-    // filter entities by type
-    let entities = get_entities(&mut client, None, Some("svc")).await.unwrap();
-    assert_eq!(
-        entities.len(),
-        3,
-        "expected to get 3 entities of type website"
-    );
+    // filter actors by type
+    let actors = get_actors(&mut client, None, Some("svc")).await.unwrap();
+    assert_eq!(actors.len(), 3, "expected to get 3 actors of type website");
 
     // filter target type by name
-    let entities = get_entities(&mut client, Some("sandytest"), None)
+    let actors = get_actors(&mut client, Some("sandytest"), None)
         .await
         .unwrap();
-    assert_eq!(entities.len(), 1, "expected to get a single result");
-    assert_eq!(entities[0].name, "sandytest");
+    assert_eq!(actors.len(), 1, "expected to get a single result");
+    assert_eq!(actors[0].name, "sandytest");
 
     // add some attributes
-    let ent3 = modify_entity(
+    let ent3 = modify_actor(
         &mut client,
         "logger",
         "svc",
@@ -319,7 +315,7 @@ async fn test_entities() {
     );
 
     // remove some attributes
-    let ent3 = modify_entity(
+    let ent3 = modify_actor(
         &mut client,
         "logger",
         "svc",
@@ -348,7 +344,7 @@ async fn test_entities() {
 
     // remove the last value for api attributes and verify it is all cleared
     // remove some attributes
-    let ent3 = modify_entity(
+    let ent3 = modify_actor(
         &mut client,
         "logger",
         "svc",
@@ -368,7 +364,7 @@ async fn test_entities() {
         2
     );
 
-    let ent3 = remove_entity(&mut client, "logger", "svc").await.unwrap();
+    let ent3 = remove_actor(&mut client, "logger", "svc").await.unwrap();
     assert_eq!(ent3.name, "logger");
     assert_eq!(ent3.typestr, "svc");
 }
@@ -503,7 +499,7 @@ async fn test_polices() {
         &mut client,
         "allow-admins",
         None,
-        Some(EntityCheck {
+        Some(ActorCheck {
             name: None,
             typestr: Some(StringCheck {
                 val_cmp: Set::Has.into(),
@@ -525,13 +521,13 @@ async fn test_polices() {
 
     assert_eq!(pol1.name, "allow-admins");
     assert_eq!(pol1.decision(), Decide::Allow);
-    assert_eq!(pol1.entity_check.unwrap_or_default().bucket, None);
+    assert_eq!(pol1.actor_check.unwrap_or_default().bucket, None);
 
     let pol1 = modify_policy(
         &mut client,
         "allow-admins",
         None,
-        Some(EntityCheck {
+        Some(ActorCheck {
             name: None,
             typestr: Some(StringCheck {
                 val_cmp: Set::Has.into(),
@@ -558,7 +554,7 @@ async fn test_polices() {
     assert_eq!(pol1.decision(), Decide::Deny);
     assert_eq!(
         pol1.clone()
-            .entity_check
+            .actor_check
             .unwrap_or_default()
             .bucket
             .unwrap_or_default()
@@ -598,7 +594,7 @@ async fn test_polices() {
         &mut client,
         "allow-teamalpha",
         Some("Give specific access to members of Team Alpha"),
-        Some(EntityCheck {
+        Some(ActorCheck {
             name: Some(StringCheck {
                 val_cmp: Set::Has.into(),
                 vals: vec![str("brandy"), str("hank")],
@@ -647,7 +643,7 @@ async fn test_polices() {
                 val_cmp: Set::Has.into(),
                 vals: vec![str("engage"), str("check"), str("read")],
             }),
-            match_in_entity: vec![],
+            match_in_actor: vec![],
             match_in_env: vec![],
         }),
         Decide::Allow,
@@ -708,7 +704,7 @@ async fn load_data() {
     .await
     .expect("Didn't get target");
 
-    add_entity(
+    add_actor(
         &mut client,
         "sally",
         "user",
@@ -720,7 +716,7 @@ async fn load_data() {
     )
     .await
     .unwrap();
-    add_entity(
+    add_actor(
         &mut client,
         "kelsey",
         "user",
@@ -732,7 +728,7 @@ async fn load_data() {
     )
     .await
     .unwrap();
-    add_entity(
+    add_actor(
         &mut client,
         "john",
         "user",
@@ -744,7 +740,7 @@ async fn load_data() {
     )
     .await
     .unwrap();
-    add_entity(
+    add_actor(
         &mut client,
         "devraj",
         "user",
@@ -756,7 +752,7 @@ async fn load_data() {
     )
     .await
     .unwrap();
-    add_entity(
+    add_actor(
         &mut client,
         "marie",
         "user",
@@ -768,7 +764,7 @@ async fn load_data() {
     )
     .await
     .unwrap();
-    add_entity(
+    add_actor(
         &mut client,
         "catie",
         "user",
@@ -780,7 +776,7 @@ async fn load_data() {
     )
     .await
     .unwrap();
-    add_entity(
+    add_actor(
         &mut client,
         "rose",
         "user",
@@ -792,7 +788,7 @@ async fn load_data() {
     )
     .await
     .unwrap();
-    add_entity(
+    add_actor(
         &mut client,
         "jack",
         "user",
@@ -803,7 +799,7 @@ async fn load_data() {
     )
     .await
     .unwrap();
-    add_entity(
+    add_actor(
         &mut client,
         "logger",
         "svc",
@@ -811,7 +807,7 @@ async fn load_data() {
     )
     .await
     .unwrap();
-    add_entity(
+    add_actor(
         &mut client,
         "launcher",
         "svc",
@@ -822,7 +818,7 @@ async fn load_data() {
     )
     .await
     .unwrap();
-    add_entity(
+    add_actor(
         &mut client,
         "printer",
         "svc",
@@ -881,7 +877,7 @@ async fn load_data() {
         &mut client,
         "allow-teamalpha",
         Some("Give specific access to members of Team Alpha"),
-        Some(EntityCheck {
+        Some(ActorCheck {
             name: Some(StringCheck {
                 val_cmp: Set::Has.into(),
                 vals: vec![str("john"), str("kelsey"), str("sally")],
@@ -930,7 +926,7 @@ async fn load_data() {
                 val_cmp: Set::Has.into(),
                 vals: vec![str("engage"), str("check"), str("read")],
             }),
-            match_in_entity: vec![str("clearance")],
+            match_in_actor: vec![str("clearance")],
             match_in_env: vec![str("env")],
         }),
         Decide::Allow,

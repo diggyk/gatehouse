@@ -55,15 +55,15 @@ message NumberCheck {
     sint32 val = 2;
 }
 
-/** How to check an entity */
-message EntityCheck {
-    // if specified, policy should check name of the entity
+/** How to check an actor */
+message ActorCheck {
+    // if specified, policy should check name of the actor
     optional StringCheck name = 1;
-    // if specified, policy should check the type of the entity
+    // if specified, policy should check the type of the actor
     optional StringCheck typestr = 2;
     // if specified, policy should check environment variables
     repeated KvCheck attributes = 3;
-    // if specified, policy should check the bucket entity falls into
+    // if specified, policy should check the bucket actor falls into
     optional NumberCheck bucket = 4;
 }
 
@@ -75,8 +75,8 @@ message TargetCheck {
     optional StringCheck typestr = 2;
     // if specified, this policy applies to targets based on these attribute checks
     repeated KvCheck attributes = 3;
-    // if specified, this policy applies when the target has a single value match between these attributes and the entity
-    repeated string match_in_entity = 4;
+    // if specified, this policy applies when the target has a single value match between these attributes and the actor
+    repeated string match_in_actor = 4;
     // if specified, this policy applies when the target has a single value matche between these attributes and the environment
     repeated string match_in_env = 5;
     // if specified, this policy applies to actions that pass this check
@@ -91,8 +91,8 @@ message PolicyRule {
     // Human readable description
     optional string desc = 2;
 
-    // Entity rules to apply to determine if this policy should apply
-    optional EntityCheck entity_check = 3;
+    // Actor rules to apply to determine if this policy should apply
+    optional ActorCheck actor_check = 3;
 
     // Environment check to perform
     repeated KvCheck env_attributes = 4;

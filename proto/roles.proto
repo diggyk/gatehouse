@@ -23,7 +23,7 @@ message RemoveRoleRequest {
 }
 
 /** Get all roles request */
-message GetAllRolesRequest {
+message GetRolesRequest {
     // filter by this exact name
     optional string name = 1;
 }

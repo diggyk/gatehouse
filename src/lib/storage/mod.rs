@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use tonic::async_trait;
 
-use crate::entity::RegisteredEntity;
+use crate::actor::RegisteredActor;
 use crate::group::RegisteredGroup;
 use crate::policy::RegisteredPolicyRule;
 use crate::role::RegisteredRole;
@@ -19,11 +19,11 @@ pub(crate) trait Storage {
     async fn load_targets(
         &self,
     ) -> Result<HashMap<String, HashMap<String, RegisteredTarget>>, String>;
-    async fn save_entity(&self, tgt: &RegisteredEntity) -> Result<(), String>;
-    async fn remove_entity(&self, tgt: &RegisteredEntity) -> Result<(), String>;
-    async fn load_entities(
+    async fn save_actor(&self, tgt: &RegisteredActor) -> Result<(), String>;
+    async fn remove_actor(&self, tgt: &RegisteredActor) -> Result<(), String>;
+    async fn load_actors(
         &self,
-    ) -> Result<HashMap<String, HashMap<String, RegisteredEntity>>, String>;
+    ) -> Result<HashMap<String, HashMap<String, RegisteredActor>>, String>;
     async fn save_role(&self, role: &RegisteredRole) -> Result<(), String>;
     async fn remove_role(&self, name: &str) -> Result<(), String>;
     async fn load_roles(&self) -> Result<HashMap<String, RegisteredRole>, String>;

@@ -1,9 +1,9 @@
 syntax = "proto3";
 package groups;
 
-/** Describes a group member, which may or may not be a registered entity */
+/** Describes a group member, which may or may not be a registered actor */
 message GroupMember {
-    // the identity of the entity (case insensitive)
+    // the identity of the actor (case insensitive)
     // ex: "johndoe@email.com"
     string name = 1;
 
@@ -70,7 +70,7 @@ message RemoveGroupRequest {
 }
 
 /** Get all groups or optionally filter */
-message GetAllGroupsRequest {
+message GetGroupsRequest {
     // filter by name
     optional string name = 1;
 

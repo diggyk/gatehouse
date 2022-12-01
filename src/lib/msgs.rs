@@ -5,20 +5,20 @@
 use tokio::sync::oneshot::Sender;
 use tonic::Status;
 
-use crate::proto::base::CheckRequest;
-use crate::proto::entities::{
-    AddEntityRequest, Entity, GetAllEntitiesRequest, ModifyEntityRequest, RemoveEntityRequest,
+use crate::proto::actors::{
+    Actor, AddActorRequest, GetActorsRequest, ModifyActorRequest, RemoveActorRequest,
 };
+use crate::proto::base::CheckRequest;
 use crate::proto::groups::{
-    AddGroupRequest, GetAllGroupsRequest, Group, ModifyGroupRequest, RemoveGroupRequest,
+    AddGroupRequest, GetGroupsRequest, Group, ModifyGroupRequest, RemoveGroupRequest,
 };
 use crate::proto::policies::{
     AddPolicyRequest, Decide, GetPoliciesRequest, ModifyPolicyRequest, PolicyRule,
     RemovePolicyRequest,
 };
-use crate::proto::roles::{AddRoleRequest, GetAllRolesRequest, RemoveRoleRequest, Role};
+use crate::proto::roles::{AddRoleRequest, GetRolesRequest, RemoveRoleRequest, Role};
 use crate::proto::targets::{
-    AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
+    AddTargetRequest, GetTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
 };
 
 #[derive(Debug)]
@@ -26,21 +26,21 @@ pub(crate) enum DsRequest {
     AddTarget(AddTargetRequest, Sender<DsResponse>),
     ModifyTarget(ModifyTargetRequest, Sender<DsResponse>),
     RemoveTarget(RemoveTargetRequest, Sender<DsResponse>),
-    GetTargets(GetAllTargetsRequest, Sender<DsResponse>),
+    GetTargets(GetTargetsRequest, Sender<DsResponse>),
 
-    AddEntity(AddEntityRequest, Sender<DsResponse>),
-    ModifyEntity(ModifyEntityRequest, Sender<DsResponse>),
-    RemoveEntity(RemoveEntityRequest, Sender<DsResponse>),
-    GetEntities(GetAllEntitiesRequest, Sender<DsResponse>),
+    AddActor(AddActorRequest, Sender<DsResponse>),
+    ModifyActor(ModifyActorRequest, Sender<DsResponse>),
+    RemoveActor(RemoveActorRequest, Sender<DsResponse>),
+    GetActors(GetActorsRequest, Sender<DsResponse>),
 
     AddRole(AddRoleRequest, Sender<DsResponse>),
     RemoveRole(RemoveRoleRequest, Sender<DsResponse>),
-    GetRoles(GetAllRolesRequest, Sender<DsResponse>),
+    GetRoles(GetRolesRequest, Sender<DsResponse>),
 
     AddGroup(AddGroupRequest, Sender<DsResponse>),
     ModifyGroup(ModifyGroupRequest, Sender<DsResponse>),
     RemoveGroup(RemoveGroupRequest, Sender<DsResponse>),
-    GetGroups(GetAllGroupsRequest, Sender<DsResponse>),
+    GetGroups(GetGroupsRequest, Sender<DsResponse>),
 
     AddPolicy(AddPolicyRequest, Sender<DsResponse>),
     ModifyPolicy(ModifyPolicyRequest, Sender<DsResponse>),
@@ -57,8 +57,8 @@ pub enum DsResponse {
     SingleTarget(Target),
     MultipleTargets(Vec<Target>),
 
-    SingleEntity(Entity),
-    MultipleEntities(Vec<Entity>),
+    SingleActor(Actor),
+    MultipleActors(Vec<Actor>),
 
     SingleRole(Role),
     MultipleRoles(Vec<Role>),

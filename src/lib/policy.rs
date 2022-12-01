@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
-use crate::entity::RegisteredEntity;
+use crate::actor::RegisteredActor;
 use crate::proto::policies as protos;
 
 /// A string comparison check
@@ -191,37 +191,37 @@ impl From<StringCheck> for protos::StringCheck {
     }
 }
 
-/// The entity match check in a rule
+/// The actor match check in a rule
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub(crate) struct EntityCheck {
+pub(crate) struct ActorCheck {
     pub name: Option<StringCheck>,
     pub typestr: Option<StringCheck>,
     pub attributes: Vec<KvCheck>,
     pub bucket: Option<NumberCheck>,
 }
-impl EntityCheck {
-    /// perform a check against a potential entity
-    pub fn check(&self, entity: &RegisteredEntity) -> bool {
+impl ActorCheck {
+    /// perform a check against a potential actor
+    pub fn check(&self, actor: &RegisteredActor) -> bool {
         if let Some(ref name_check) = self.name {
-            if !name_check.check(&entity.name) {
+            if !name_check.check(&actor.name) {
                 // name does not match
                 return false;
             }
         }
 
         if let Some(ref type_check) = self.typestr {
-            if !type_check.check(&entity.typestr) {
+            if !type_check.check(&actor.typestr) {
                 // type does not match
                 return false;
             }
         }
 
-        if self.attributes.iter().any(|a| !a.check(&entity.attributes)) {
+        if self.attributes.iter().any(|a| !a.check(&actor.attributes)) {
             return false;
         }
 
         if let Some(ref bucket_check) = self.bucket {
-            if !bucket_check.check(entity.bucket().into()) {
+            if !bucket_check.check(actor.bucket().into()) {
                 return false;
             }
         }
@@ -231,8 +231,8 @@ impl EntityCheck {
 }
 
 /// convert the protobuf version to our version
-impl From<protos::EntityCheck> for EntityCheck {
-    fn from(ec: protos::EntityCheck) -> Self {
+impl From<protos::ActorCheck> for ActorCheck {
+    fn from(ec: protos::ActorCheck) -> Self {
         Self {
             name: ec.name.map(StringCheck::from),
             typestr: ec.typestr.map(StringCheck::from),
@@ -241,8 +241,8 @@ impl From<protos::EntityCheck> for EntityCheck {
         }
     }
 }
-impl From<EntityCheck> for protos::EntityCheck {
-    fn from(ec: EntityCheck) -> Self {
+impl From<ActorCheck> for protos::ActorCheck {
+    fn from(ec: ActorCheck) -> Self {
         Self {
             name: ec.name.map(protos::StringCheck::from),
             typestr: ec.typestr.map(protos::StringCheck::from),
@@ -262,7 +262,7 @@ pub(crate) struct TargetCheck {
     name: Option<StringCheck>,
     typestr: Option<StringCheck>,
     attributes: Vec<KvCheck>,
-    match_in_entity: Vec<String>,
+    match_in_actor: Vec<String>,
     match_in_env: Vec<String>,
     action: Option<StringCheck>,
 }
@@ -275,12 +275,12 @@ impl TargetCheck {
         other_map: &HashMap<String, HashSet<String>>,
     ) -> bool {
         if !our_map.contains_key(attr_to_check) {
-            // the target itself doesn't contain the attribute we are supposed to match with the entity
+            // the target itself doesn't contain the attribute we are supposed to match with the actor
             return false;
         }
 
         if !other_map.contains_key(attr_to_check) {
-            // the entity doesn't contain the attribute we are supposed to check
+            // the actor doesn't contain the attribute we are supposed to check
             return false;
         }
 
@@ -293,21 +293,21 @@ impl TargetCheck {
             .any(|tav| other_attr_vals.contains(tav))
         {
             // we didn't find a single value in the target's attribute values that were also in the
-            // entity's attribute values
+            // actor's attribute values
             return false;
         }
 
         true
     }
 
-    /// perform a check against a potential entity
+    /// perform a check against a potential actor
     pub fn check(
         &self,
         target_name: &str,
         target_type: &str,
         target_attributes: &HashMap<String, HashSet<String>>,
         target_action: &str,
-        entity_attributes: &HashMap<String, HashSet<String>>,
+        actor_attributes: &HashMap<String, HashSet<String>>,
         env_attributes: &HashMap<String, HashSet<String>>,
     ) -> bool {
         if let Some(ref name_check) = self.name {
@@ -329,10 +329,10 @@ impl TargetCheck {
             return false;
         }
 
-        // make sure every attribute that's supposed to match with the entity does match
-        for attr_to_check in &self.match_in_entity {
-            if !self.check_attr_match(attr_to_check, target_attributes, entity_attributes) {
-                // this attribute did not match between the target and the entity
+        // make sure every attribute that's supposed to match with the actor does match
+        for attr_to_check in &self.match_in_actor {
+            if !self.check_attr_match(attr_to_check, target_attributes, actor_attributes) {
+                // this attribute did not match between the target and the actor
                 return false;
             }
         }
@@ -362,7 +362,7 @@ impl From<protos::TargetCheck> for TargetCheck {
             name: tc.name.map(StringCheck::from),
             typestr: tc.typestr.map(StringCheck::from),
             attributes: tc.attributes.into_iter().map(KvCheck::from).collect(),
-            match_in_entity: tc.match_in_entity,
+            match_in_actor: tc.match_in_actor,
             match_in_env: tc.match_in_env,
             action: tc.action.map(StringCheck::from),
         }
@@ -378,7 +378,7 @@ impl From<TargetCheck> for protos::TargetCheck {
                 .into_iter()
                 .map(protos::KvCheck::from)
                 .collect(),
-            match_in_entity: tc.match_in_entity,
+            match_in_actor: tc.match_in_actor,
             match_in_env: tc.match_in_env,
             action: tc.action.map(protos::StringCheck::from),
         }
@@ -393,8 +393,8 @@ pub(crate) struct RegisteredPolicyRule {
     /// the optional human description
     pub desc: Option<String>,
 
-    /// determine if entity matches or should match all entities if None
-    pub entity_check: Option<EntityCheck>,
+    /// determine if actor matches or should match all actors if None
+    pub actor_check: Option<ActorCheck>,
 
     /// list of environment attributes to check
     pub env_attributes: Vec<KvCheck>,
@@ -412,7 +412,7 @@ impl From<protos::PolicyRule> for RegisteredPolicyRule {
         Self {
             name: rule.name,
             desc: rule.desc,
-            entity_check: rule.entity_check.map(EntityCheck::from),
+            actor_check: rule.actor_check.map(ActorCheck::from),
             env_attributes: rule.env_attributes.into_iter().map(KvCheck::from).collect(),
             target_check: rule.target_check.map(TargetCheck::from),
             decision: Decide::from(decision),
@@ -425,7 +425,7 @@ impl From<RegisteredPolicyRule> for protos::PolicyRule {
         Self {
             name: rpr.name,
             desc: rpr.desc,
-            entity_check: rpr.entity_check.map(EntityCheck::into),
+            actor_check: rpr.actor_check.map(ActorCheck::into),
             env_attributes: rpr.env_attributes.into_iter().map(KvCheck::into).collect(),
             target_check: rpr.target_check.map(TargetCheck::into),
             decision: protos::Decide::from(rpr.decision).into(),
@@ -484,87 +484,87 @@ mod tests {
     }
 
     #[test]
-    fn test_entitycheck() {
+    fn test_actorcheck() {
         let mut map: HashMap<String, HashSet<String>> = HashMap::new();
         map.insert(
             str("role"),
             HashSet::from_iter(vec![str("admin"), str("user")]),
         );
         map.insert(str("region"), HashSet::from_iter(vec![str("us")]));
-        let entity = RegisteredEntity::new("kaitlyn", "user", map);
+        let actor = RegisteredActor::new("kaitlyn", "user", map);
 
         // an "everything passes" check
-        assert!(EntityCheck {
+        assert!(ActorCheck {
             name: None,
             typestr: None,
             attributes: vec![],
             bucket: None,
         }
-        .check(&entity));
+        .check(&actor));
 
         // check name
-        assert!(EntityCheck {
+        assert!(ActorCheck {
             name: Some(StringCheck::OneOf(vec![str("betty"), str("kaitlyn")])),
             typestr: None,
             attributes: vec![],
             bucket: None,
         }
-        .check(&entity));
-        assert!(!EntityCheck {
+        .check(&actor));
+        assert!(!ActorCheck {
             name: Some(StringCheck::OneOf(vec![str("jonny")])),
             typestr: None,
             attributes: vec![],
             bucket: None,
         }
-        .check(&entity));
+        .check(&actor));
 
         // check typestr
-        assert!(EntityCheck {
+        assert!(ActorCheck {
             name: Some(StringCheck::OneOf(vec![str("betty"), str("kaitlyn")])),
             typestr: Some(StringCheck::OneOf(vec![str("user")])),
             attributes: vec![],
             bucket: None,
         }
-        .check(&entity));
-        assert!(!EntityCheck {
+        .check(&actor));
+        assert!(!ActorCheck {
             name: Some(StringCheck::OneOf(vec![str("kaitlyn")])),
             typestr: Some(StringCheck::NotOneOf(vec![str("user")])),
             attributes: vec![],
             bucket: None,
         }
-        .check(&entity));
+        .check(&actor));
 
         // check attributes
-        assert!(EntityCheck {
+        assert!(ActorCheck {
             name: Some(StringCheck::OneOf(vec![str("betty"), str("kaitlyn")])),
             typestr: Some(StringCheck::OneOf(vec![str("user")])),
             attributes: vec![KvCheck::Has(str("region"), vec![str("us")])],
             bucket: None,
         }
-        .check(&entity));
-        assert!(!EntityCheck {
+        .check(&actor));
+        assert!(!ActorCheck {
             name: Some(StringCheck::OneOf(vec![str("betty"), str("kaitlyn")])),
             typestr: Some(StringCheck::OneOf(vec![str("user")])),
             attributes: vec![KvCheck::Has(str("role"), vec![str("manager")])],
             bucket: None,
         }
-        .check(&entity));
+        .check(&actor));
 
         // check bucket (which is 28)
-        assert!(EntityCheck {
+        assert!(ActorCheck {
             name: Some(StringCheck::OneOf(vec![str("betty"), str("kaitlyn")])),
             typestr: Some(StringCheck::OneOf(vec![str("user")])),
             attributes: vec![KvCheck::Has(str("region"), vec![str("us")])],
             bucket: Some(NumberCheck::LessThan(50)),
         }
-        .check(&entity));
-        assert!(!EntityCheck {
+        .check(&actor));
+        assert!(!ActorCheck {
             name: Some(StringCheck::OneOf(vec![str("betty"), str("kaitlyn")])),
             typestr: Some(StringCheck::OneOf(vec![str("user")])),
             attributes: vec![KvCheck::Has(str("region"), vec![str("us")])],
             bucket: Some(NumberCheck::MoreThan(50)),
         }
-        .check(&entity));
+        .check(&actor));
     }
 
     #[test]
@@ -576,12 +576,12 @@ mod tests {
         );
         target_attrs.insert(str("env"), HashSet::from_iter(vec![str("test")]));
 
-        let mut entity_attrs: HashMap<String, HashSet<String>> = HashMap::new();
-        entity_attrs.insert(
+        let mut actor_attrs: HashMap<String, HashSet<String>> = HashMap::new();
+        actor_attrs.insert(
             str("office"),
             HashSet::from_iter(vec![str("sfo"), str("remote")]),
         );
-        entity_attrs.insert(
+        actor_attrs.insert(
             str("env"),
             HashSet::from_iter(vec![str("test"), str("prod")]),
         );
@@ -594,7 +594,7 @@ mod tests {
             name: None,
             typestr: None,
             attributes: vec![],
-            match_in_entity: vec![],
+            match_in_actor: vec![],
             match_in_env: vec![],
             action: None,
         }
@@ -603,7 +603,7 @@ mod tests {
             "db",
             &target_attrs,
             "read",
-            &entity_attrs,
+            &actor_attrs,
             &env_attrs
         ));
 
@@ -612,7 +612,7 @@ mod tests {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: None,
             attributes: vec![],
-            match_in_entity: vec![],
+            match_in_actor: vec![],
             match_in_env: vec![],
             action: None,
         }
@@ -621,14 +621,14 @@ mod tests {
             "db",
             &target_attrs,
             "read",
-            &entity_attrs,
+            &actor_attrs,
             &env_attrs
         ));
         assert!(!TargetCheck {
             name: Some(StringCheck::NotOneOf(vec![str("bree")])),
             typestr: None,
             attributes: vec![],
-            match_in_entity: vec![],
+            match_in_actor: vec![],
             match_in_env: vec![],
             action: None,
         }
@@ -637,7 +637,7 @@ mod tests {
             "db",
             &target_attrs,
             "read",
-            &entity_attrs,
+            &actor_attrs,
             &env_attrs
         ));
 
@@ -646,7 +646,7 @@ mod tests {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![],
-            match_in_entity: vec![],
+            match_in_actor: vec![],
             match_in_env: vec![],
             action: None,
         }
@@ -655,14 +655,14 @@ mod tests {
             "db",
             &target_attrs,
             "read",
-            &entity_attrs,
+            &actor_attrs,
             &env_attrs
         ));
         assert!(!TargetCheck {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("web")])),
             attributes: vec![],
-            match_in_entity: vec![],
+            match_in_actor: vec![],
             match_in_env: vec![],
             action: None,
         }
@@ -671,7 +671,7 @@ mod tests {
             "db",
             &target_attrs,
             "read",
-            &entity_attrs,
+            &actor_attrs,
             &env_attrs
         ));
 
@@ -680,7 +680,7 @@ mod tests {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![KvCheck::Has(str("env"), vec![str("test")])],
-            match_in_entity: vec![],
+            match_in_actor: vec![],
             match_in_env: vec![],
             action: None,
         }
@@ -689,14 +689,14 @@ mod tests {
             "db",
             &target_attrs,
             "read",
-            &entity_attrs,
+            &actor_attrs,
             &env_attrs
         ));
         assert!(!TargetCheck {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![KvCheck::Has(str("load"), vec![str("nominal")])],
-            match_in_entity: vec![],
+            match_in_actor: vec![],
             match_in_env: vec![],
             action: None,
         }
@@ -705,7 +705,7 @@ mod tests {
             "db",
             &target_attrs,
             "read",
-            &entity_attrs,
+            &actor_attrs,
             &env_attrs
         ));
 
@@ -714,7 +714,7 @@ mod tests {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![KvCheck::Has(str("env"), vec![str("test")])],
-            match_in_entity: vec![],
+            match_in_actor: vec![],
             match_in_env: vec![],
             action: Some(StringCheck::OneOf(vec![str("read"),])),
         }
@@ -723,14 +723,14 @@ mod tests {
             "db",
             &target_attrs,
             "read",
-            &entity_attrs,
+            &actor_attrs,
             &env_attrs
         ));
         assert!(!TargetCheck {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![KvCheck::Has(str("env"), vec![str("test")])],
-            match_in_entity: vec![],
+            match_in_actor: vec![],
             match_in_env: vec![],
             action: Some(StringCheck::OneOf(vec![str("write")])),
         }
@@ -739,16 +739,16 @@ mod tests {
             "db",
             &target_attrs,
             "read",
-            &entity_attrs,
+            &actor_attrs,
             &env_attrs
         ));
 
-        // test match_in_entity
+        // test match_in_actor
         assert!(TargetCheck {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![KvCheck::Has(str("env"), vec![str("test")])],
-            match_in_entity: vec![str("env")],
+            match_in_actor: vec![str("env")],
             match_in_env: vec![],
             action: Some(StringCheck::OneOf(vec![str("read"),])),
         }
@@ -757,14 +757,14 @@ mod tests {
             "db",
             &target_attrs,
             "read",
-            &entity_attrs,
+            &actor_attrs,
             &env_attrs
         ));
         assert!(!TargetCheck {
             name: Some(StringCheck::OneOf(vec![str("bree")])),
             typestr: Some(StringCheck::OneOf(vec![str("db")])),
             attributes: vec![KvCheck::Has(str("env"), vec![str("test")])],
-            match_in_entity: vec![str("role")],
+            match_in_actor: vec![str("role")],
             match_in_env: vec![],
             action: Some(StringCheck::OneOf(vec![str("read"),])),
         }
@@ -773,7 +773,7 @@ mod tests {
             "db",
             &target_attrs,
             "read",
-            &entity_attrs,
+            &actor_attrs,
             &env_attrs
         ));
     }
