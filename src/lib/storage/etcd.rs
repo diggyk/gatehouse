@@ -298,7 +298,6 @@ impl EtcdStorage {
                                 // the loop.
                                 continue;
                             }
-                            println!("Got message: {}", headers.revision());
                             *last_rev.lock().await = headers.revision();
                         } else {
                             // TODO -- we need some kind of proper error for this?

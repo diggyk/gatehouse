@@ -1115,6 +1115,7 @@ impl Datastore {
     async fn update(&self, req: BackendUpdate) {
         match req {
             BackendUpdate::PutActor(actor) => {
+                println!("backend => add actor {}/{}", actor.typestr, actor.name);
                 let mut actors = self.actors.write().await;
                 let typed_actors = actors
                     .entry(actor.typestr.clone())
@@ -1122,18 +1123,22 @@ impl Datastore {
                 typed_actors.insert(actor.name.clone(), actor);
             }
             BackendUpdate::PutGroup(group) => {
+                println!("backend => add group {}", group.name);
                 let mut groups = self.groups.write().await;
                 groups.insert(group.name.clone(), group);
             }
             BackendUpdate::PutPolicyRule(policyrule) => {
+                println!("backend => add policy {}", policyrule.name);
                 let mut policies = self.policies.write().await;
                 policies.insert(policyrule.name.clone(), policyrule);
             }
             BackendUpdate::PutRole(role) => {
+                println!("backend => add role {}", role.name);
                 let mut roles = self.roles.write().await;
                 roles.insert(role.name.clone(), role);
             }
             BackendUpdate::PutTarget(target) => {
+                println!("backend => add target {}", target.name);
                 let mut targets = self.targets.write().await;
                 let type_targets = targets
                     .entry(target.typestr.clone())
@@ -1141,24 +1146,29 @@ impl Datastore {
                 type_targets.insert(target.name.clone(), target);
             }
             BackendUpdate::DeleteActor(typestr, name) => {
+                println!("backend => delete {}/{}", typestr, name);
                 let mut actors = self.actors.write().await;
                 if let Some(typed_actors) = actors.get_mut(&typestr) {
                     typed_actors.remove(&name);
                 }
             }
             BackendUpdate::DeleteGroup(name) => {
+                println!("backend => delete group {}", name);
                 let mut groups = self.groups.write().await;
                 groups.remove(&name);
             }
             BackendUpdate::DeletePolicyRule(name) => {
+                println!("backend => delete policy rule {}", name);
                 let mut policies = self.policies.write().await;
                 policies.remove(&name);
             }
             BackendUpdate::DeleteRole(name) => {
+                println!("backend => delete role {}", name);
                 let mut roles = self.roles.write().await;
                 roles.remove(&name);
             }
             BackendUpdate::DeleteTarget(typestr, name) => {
+                println!("backend => delete target {}/{}", typestr, name);
                 let mut targets = self.targets.write().await;
                 if let Some(typed_targets) = targets.get_mut(&typestr) {
                     typed_targets.remove(&name);
