@@ -198,13 +198,13 @@ pub async fn remove_actor(
 }
 
 /// Get all actors
-pub async fn get_actors(
+pub async fn get_actors<S: Into<String>>(
     client: &mut GatehouseClient<Channel>,
-    name: Option<&str>,
-    typestr: Option<&str>,
+    name: Option<S>,
+    typestr: Option<S>,
 ) -> Result<Vec<Actor>, String> {
-    let name = name.map(str);
-    let typestr = typestr.map(str);
+    let name = name.map(|s| s.into());
+    let typestr = typestr.map(|s| s.into());
 
     Ok(client
         .get_actors(GetActorsRequest { name, typestr })

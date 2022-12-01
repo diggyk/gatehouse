@@ -94,7 +94,7 @@ impl Display for RegisteredActor {
             })
             .collect::<Vec<String>>()
             .join(" ");
-        write!(f, "ent[{}/{}]: {}", self.typestr, self.name, attribvals)
+        write!(f, "actor[{}/{}]: {}", self.typestr, self.name, attribvals)
     }
 }
 
