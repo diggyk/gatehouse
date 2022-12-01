@@ -72,7 +72,7 @@ pub async fn run_server() {
     Command::new("cargo")
         .arg("run")
         .arg("--bin")
-        .arg("gatehouse-server")
+        .arg("gatesrv")
         .kill_on_drop(true)
         .stdout(Stdio::null())
         .spawn()

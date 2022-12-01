@@ -1,7 +1,11 @@
 use std::collections::HashMap;
 use std::process::exit;
+use std::sync::Arc;
 
-use etcd_client::{Client, GetOptions};
+use etcd_client::{Client, GetOptions, WatchOptions, WatchStream};
+use flume::Receiver;
+use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
 use tonic::async_trait;
 
 use crate::entity::RegisteredEntity;
@@ -33,15 +37,165 @@ impl EtcdStorage {
 
         let basepath = String::from("/gatehouse");
 
-        if let Err(err) = client
-            .get(basepath.as_bytes(), Some(GetOptions::new()))
-            .await
-        {
+        // test our connection to Etcd
+        if let Err(err) = client.get(basepath.as_bytes(), None).await {
             eprintln!("Failed to query Etcd on startup: {err}");
             exit(1);
         }
 
+        let last_rev: Arc<Mutex<i64>> = Arc::new(Mutex::new(0));
+
+        match client.get(basepath.as_bytes(), None).await {
+            Err(err) => {
+                eprintln!("Failed to query Etcd on startup: {err}");
+                exit(1);
+            }
+            Ok(response) => {
+                let header = response
+                    .header()
+                    .expect("Error establishing initial Etcd connection");
+                let starting_rev = header.revision();
+                println!("Starting rev: {starting_rev}");
+
+                *last_rev.lock().await = starting_rev;
+            }
+        }
+
+        // TODO -- watch and restart if failed
+        let last_rev_arc = last_rev.clone();
+        let basepath_copy = basepath.clone();
+        let client_copy = client.clone();
+        tokio::spawn(async move {
+            EtcdStorage::watch_manager(client_copy, &basepath_copy, last_rev_arc).await
+        });
+
         Self { basepath, client }
+    }
+
+    /// The watch manager establishes the watch on Etcd and reestablishs the watch if connectivity
+    /// is broken.
+    async fn watch_manager(mut client: Client, basepath: &str, last_rev: Arc<Mutex<i64>>) {
+        loop {
+            println!("STARTING WATCH AT {}", last_rev.lock().await);
+            let (mut watcher, watch_stream) = match client
+                .watch(
+                    basepath,
+                    Some(
+                        WatchOptions::new()
+                            .with_prefix()
+                            .with_progress_notify()
+                            .with_start_revision(*last_rev.lock().await),
+                    ),
+                )
+                .await
+            {
+                Ok((w, s)) => (w, s),
+                Err(err) => {
+                    eprintln!("Could not establish a watch on Etcd: {err}");
+                    eprintln!("Retrying in 2 seconds...");
+                    sleep(Duration::from_secs(2)).await;
+                    continue;
+                }
+            };
+
+            let last_rev_copy = last_rev.clone();
+            let (kill_signal, kill_receiver) = flume::bounded(1);
+            let stream_watcher = tokio::spawn(async move {
+                match Self::watch_changes(watch_stream, last_rev_copy, kill_receiver).await {
+                    Ok(_) => println!("stream watched exited normally"),
+                    Err(err) => println!("stream watch exited with error: {err}"),
+                }
+            });
+
+            // this loop askes for progress so we can detect if our stream died
+            // and also if the stream watcher died
+            loop {
+                sleep(Duration::from_secs(1)).await;
+                if stream_watcher.is_finished() {
+                    println!("Stream watched has exited! Restart watching...");
+                    break;
+                }
+                match watcher.request_progress().await {
+                    Ok(()) => (),
+                    Err(err) => {
+                        println!("Error with progress: {err}");
+                        break;
+                    }
+                }
+            }
+
+            if !stream_watcher.is_finished() {
+                match kill_signal.send(()) {
+                    Err(err) => {
+                        eprintln!("Error sending kill signal to stream watcher: {err}");
+                        // stream_watcher.abort();
+                    }
+                    Ok(_) => {
+                        println!("Waiting for watch stream to stop so we can restart");
+                        let _ = stream_watcher.await;
+                    }
+                }
+            } else {
+                println!("Stream watcher is already shut down");
+            }
+
+            // take a breather before starting back up
+            sleep(Duration::from_secs(10)).await;
+        }
+    }
+
+    /// Watch the stream for incoming changes
+    ///
+    /// As new messages arrive, we'll send them to the datastore. If we hit an error, send a signal back
+    /// to the watch manager so we can restart everything.  If we get a kill signal, stop and exit.
+    ///
+    /// When new messages are processed, update the revision number so we can restart a watch as needed
+    async fn watch_changes(
+        mut stream: WatchStream,
+        last_rev: Arc<Mutex<i64>>,
+        kill_receiver: Receiver<()>,
+    ) -> Result<(), String> {
+        loop {
+            if !kill_receiver.is_empty() || kill_receiver.is_disconnected() {
+                break;
+            }
+            tokio::select! {
+                _ = sleep(Duration::from_secs(1)) => {}
+                response = stream.message() => {
+                    if let Err(err) = response {
+                        // we need to exit so we can be reestablished
+                        return Err(format!("Watch stream closed: {err}"));
+                    }
+
+                    if let Ok(Some(mut msg)) = response {
+                        if let Some(headers) = msg.take_header() {
+                            if *last_rev.lock().await == headers.revision() {
+                                // we've already processed this revision so break
+                                // the loop.
+                                continue;
+                            }
+                            println!("Got message: {}", headers.revision());
+                            *last_rev.lock().await = headers.revision();
+                        } else {
+                            // TODO -- we need some kind of proper error for this?
+                            eprintln!("No headers???");
+                        }
+
+                        for event in msg.events() {
+                            println!("Got event of {:?}", event.event_type());
+                            if let Some(kv) = event.kv() {
+                                println!(
+                                    "  key: {}  val: {}",
+                                    kv.key_str().map_err(econv)?,
+                                    kv.value_str().map_err(econv)?
+                                );
+                            }
+                        }
+                    }
+                },
+            }
+        }
+        Err("Watch stream was closed".to_string())
     }
 }
 
