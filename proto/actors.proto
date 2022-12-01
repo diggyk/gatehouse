@@ -1,0 +1,76 @@
+syntax = "proto3";
+package actors;
+
+import "common.proto";
+
+/** Describes an actor and its attributes that will be tested against policies for a target */
+message Actor {
+    // the identity of the actor (case insensitive)
+    // ex: "johndoe@email.com"
+    string name = 1;
+
+    // type string (case insensitive)
+    // ex: "email"
+    string typestr = 2;
+
+    // actor attributes
+    map<string, common.AttributeValues> attributes = 3;
+}
+
+/** Request to add an actor */
+message AddActorRequest {
+    // the actor's name (case-insensitive)
+    string name = 1;
+
+    // the actor type
+    string typestr = 2;
+
+    // actor attributes
+    map<string, common.AttributeValues> attributes = 3;
+}
+
+/** Request to update an actor */
+message ModifyActorRequest {
+    // the actor's name (case-insensitive)
+    string name = 1;
+
+    // the actor type
+    string typestr = 2;
+
+    // actor attributes to add
+    map<string, common.AttributeValues> add_attributes = 3;
+
+    // actor attributes to remove
+    map<string, common.AttributeValues> remove_attributes = 4;
+}
+
+/** Request to delete an actor */
+message RemoveActorRequest {
+    // the actor's name (case-insensitive)
+    string name = 1;
+
+    // the actor type
+    string typestr = 2;
+
+}
+
+/** Request to get all actors, or filtered by name and/or type */
+message GetActorsRequest {
+    // the actor's name (case-insensitive)
+    optional string name = 1;
+
+    // the actor type
+    optional string typestr = 2;
+}
+
+/** Single actor response */
+message ActorResponse {
+    // the actor
+    Actor actor = 1;
+}
+
+/** Multiple actors response */
+message MultiActorResponse {
+    // the actors
+    repeated Actor actors = 1;
+}

@@ -2,16 +2,16 @@ syntax = "proto3";
 package gatehouse;
 
 import "common.proto";
-import "entities.proto";
+import "actors.proto";
 import "groups.proto";
 import "policies.proto";
 import "roles.proto";
 import "targets.proto";
 
-/// A request to see if an entity can take an action on a target
+/// A request to see if an actor can take an action on a target
 message CheckRequest {
-    // the entity to be checked
-    entities.Entity entity = 1;
+    // the actor to be checked
+    actors.Actor actor = 1;
     // environment attributes
     map<string, common.AttributeValues> env_attributes = 2;
 
@@ -42,20 +42,20 @@ service Gatehouse {
     rpc RemoveTarget(targets.RemoveTargetRequest) returns (targets.TargetResponse);
 
     // get all existing targets
-    rpc GetTargets(targets.GetAllTargetsRequest) returns (targets.MultiTargetResponse);
+    rpc GetTargets(targets.GetTargetsRequest) returns (targets.MultiTargetResponse);
 
     /** ENTITIES */
-    // add a new entity
-    rpc AddEntity (entities.AddEntityRequest) returns (entities.EntityResponse);
+    // add a new actor
+    rpc AddActor (actors.AddActorRequest) returns (actors.ActorResponse);
 
-    // modify an existing entity
-    rpc ModifyEntity (entities.ModifyEntityRequest) returns (entities.EntityResponse);
+    // modify an existing actor
+    rpc ModifyActor (actors.ModifyActorRequest) returns (actors.ActorResponse);
 
-    // remove an existing entity
-    rpc RemoveEntity (entities.RemoveEntityRequest) returns (entities.EntityResponse);
+    // remove an existing actor
+    rpc RemoveActor (actors.RemoveActorRequest) returns (actors.ActorResponse);
 
-    // get all entities (or filter)
-    rpc GetEntities (entities.GetAllEntitiesRequest) returns (entities.MultiEntityResponse);
+    // get all actors (or filter)
+    rpc GetActors (actors.GetActorsRequest) returns (actors.MultiActorResponse);
 
     /** ROLES */
     // add a new role
@@ -65,7 +65,7 @@ service Gatehouse {
     rpc RemoveRole(roles.RemoveRoleRequest) returns (roles.RoleResponse);
 
     // get all roles (or filter by name to see if a role exists)
-    rpc GetRoles (roles.GetAllRolesRequest) returns (roles.MultiRoleResponse);
+    rpc GetRoles (roles.GetRolesRequest) returns (roles.MultiRoleResponse);
 
     /** GROUPS */
     // add a new group
@@ -78,7 +78,7 @@ service Gatehouse {
     rpc RemoveGroup (groups.RemoveGroupRequest) returns (groups.GroupResponse);
 
     // get all groups (or with filters)
-    rpc GetGroups (groups.GetAllGroupsRequest) returns (groups.MultiGroupResponse);
+    rpc GetGroups (groups.GetGroupsRequest) returns (groups.MultiGroupResponse);
 
     /** POLICIES */
     // add a new policy

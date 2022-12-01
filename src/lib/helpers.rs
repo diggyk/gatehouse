@@ -2,24 +2,23 @@
 
 use std::collections::HashMap;
 
-use crate::proto::common::AttributeValues;
-use crate::proto::entities::{
-    AddEntityRequest, Entity, GetAllEntitiesRequest, ModifyEntityRequest, RemoveEntityRequest,
+use crate::proto::actors::{
+    Actor, AddActorRequest, GetActorsRequest, ModifyActorRequest, RemoveActorRequest,
 };
+use crate::proto::common::AttributeValues;
 use crate::proto::groups::{
-    AddGroupRequest, GetAllGroupsRequest, Group, GroupMember, ModifyGroupRequest,
-    RemoveGroupRequest,
+    AddGroupRequest, GetGroupsRequest, Group, GroupMember, ModifyGroupRequest, RemoveGroupRequest,
 };
 use crate::proto::policies::{
-    AddPolicyRequest, Decide, EntityCheck, GetPoliciesRequest, KvCheck, ModifyPolicyRequest,
+    ActorCheck, AddPolicyRequest, Decide, GetPoliciesRequest, KvCheck, ModifyPolicyRequest,
     PolicyRule, RemovePolicyRequest, TargetCheck,
 };
-use crate::proto::roles::{AddRoleRequest, GetAllRolesRequest, RemoveRoleRequest, Role};
+use crate::proto::roles::{AddRoleRequest, GetRolesRequest, RemoveRoleRequest, Role};
 use tonic::transport::Channel;
 
 use crate::proto::base::gatehouse_client::GatehouseClient;
 use crate::proto::targets::{
-    AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
+    AddTargetRequest, GetTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
 };
 
 /// Helper to quickly create a string
@@ -126,93 +125,93 @@ pub async fn get_targets(
     let typestr = typestr.map(str);
 
     Ok(client
-        .get_targets(GetAllTargetsRequest { name, typestr })
+        .get_targets(GetTargetsRequest { name, typestr })
         .await
         .map_err(|err| format!("Failed to get targets: {err}"))?
         .into_inner()
         .targets)
 }
 
-/// Adds a single entity
-pub async fn add_entity(
+/// Adds a single actor
+pub async fn add_actor(
     client: &mut GatehouseClient<Channel>,
     name: &str,
     typestr: &str,
     attributes: Vec<(String, Vec<&str>)>,
-) -> Result<Entity, String> {
+) -> Result<Actor, String> {
     let attributes = to_attribs(attributes);
 
     client
-        .add_entity(AddEntityRequest {
+        .add_actor(AddActorRequest {
             name: str(name),
             typestr: str(typestr),
             attributes,
         })
         .await
-        .map_err(|err| format!("Failed to add entity: {err}"))?
+        .map_err(|err| format!("Failed to add actor: {err}"))?
         .into_inner()
-        .entity
+        .actor
         .ok_or_else(|| str("No target returned after creation"))
 }
 
-/// Modify a entity
-pub async fn modify_entity(
+/// Modify a actor
+pub async fn modify_actor(
     client: &mut GatehouseClient<Channel>,
     name: &str,
     typestr: &str,
     add_attributes: Vec<(String, Vec<&str>)>,
     remove_attributes: Vec<(String, Vec<&str>)>,
-) -> Result<Entity, String> {
+) -> Result<Actor, String> {
     let add_attributes = to_attribs(add_attributes);
     let remove_attributes = to_attribs(remove_attributes);
 
     client
-        .modify_entity(ModifyEntityRequest {
+        .modify_actor(ModifyActorRequest {
             name: str(name),
             typestr: str(typestr),
             add_attributes,
             remove_attributes,
         })
         .await
-        .map_err(|err| format!("Failed to modify entity: {err}"))?
+        .map_err(|err| format!("Failed to modify actor: {err}"))?
         .into_inner()
-        .entity
-        .ok_or_else(|| str("No entity returned after update"))
+        .actor
+        .ok_or_else(|| str("No actor returned after update"))
 }
 
-/// Remove entity
-pub async fn remove_entity(
+/// Remove actor
+pub async fn remove_actor(
     client: &mut GatehouseClient<Channel>,
     name: &str,
     typestr: &str,
-) -> Result<Entity, String> {
+) -> Result<Actor, String> {
     client
-        .remove_entity(RemoveEntityRequest {
+        .remove_actor(RemoveActorRequest {
             name: str(name),
             typestr: str(typestr),
         })
         .await
-        .map_err(|err| format!("Failed to remove entity: {err}"))?
+        .map_err(|err| format!("Failed to remove actor: {err}"))?
         .into_inner()
-        .entity
-        .ok_or_else(|| str("No entity returned after deletion"))
+        .actor
+        .ok_or_else(|| str("No actor returned after deletion"))
 }
 
-/// Get all entities
-pub async fn get_entities(
+/// Get all actors
+pub async fn get_actors(
     client: &mut GatehouseClient<Channel>,
     name: Option<&str>,
     typestr: Option<&str>,
-) -> Result<Vec<Entity>, String> {
+) -> Result<Vec<Actor>, String> {
     let name = name.map(str);
     let typestr = typestr.map(str);
 
     Ok(client
-        .get_entities(GetAllEntitiesRequest { name, typestr })
+        .get_actors(GetActorsRequest { name, typestr })
         .await
-        .map_err(|err| format!("Failed to get entities: {err}"))?
+        .map_err(|err| format!("Failed to get actors: {err}"))?
         .into_inner()
-        .entities)
+        .actors)
 }
 
 /// Add a role
@@ -248,7 +247,7 @@ pub async fn get_roles(
     let name = name.map(str);
 
     Ok(client
-        .get_roles(GetAllRolesRequest { name })
+        .get_roles(GetRolesRequest { name })
         .await
         .map_err(|err| format!("Failed to get roles: {err}"))?
         .into_inner()
@@ -365,7 +364,7 @@ pub async fn get_groups(
     let role = role.map(String::from);
 
     Ok(client
-        .get_groups(GetAllGroupsRequest { name, member, role })
+        .get_groups(GetGroupsRequest { name, member, role })
         .await
         .map_err(|err| format!("Failed to get groups: {err}"))?
         .into_inner()
@@ -377,7 +376,7 @@ pub async fn add_policy(
     client: &mut GatehouseClient<Channel>,
     name: &str,
     desc: Option<&str>,
-    entity_check: Option<EntityCheck>,
+    actor_check: Option<ActorCheck>,
     env_attributes: Vec<KvCheck>,
     target_check: Option<TargetCheck>,
     decision: Decide,
@@ -385,7 +384,7 @@ pub async fn add_policy(
     let rule = PolicyRule {
         name: name.to_string(),
         desc: desc.map(String::from),
-        entity_check,
+        actor_check,
         env_attributes,
         target_check,
         decision: decision.into(),
@@ -404,7 +403,7 @@ pub async fn modify_policy(
     client: &mut GatehouseClient<Channel>,
     name: &str,
     desc: Option<&str>,
-    entity_check: Option<EntityCheck>,
+    actor_check: Option<ActorCheck>,
     env_attributes: Vec<KvCheck>,
     target_check: Option<TargetCheck>,
     decision: Decide,
@@ -412,7 +411,7 @@ pub async fn modify_policy(
     let rule = PolicyRule {
         name: name.to_string(),
         desc: desc.map(String::from),
-        entity_check,
+        actor_check,
         env_attributes,
         target_check,
         decision: decision.into(),

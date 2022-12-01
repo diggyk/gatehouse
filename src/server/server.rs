@@ -11,7 +11,8 @@ use gatehouse::svc::GatehouseSvc;
 #[tokio::main]
 /// Our main function for the server
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "[::1]:6174".parse()?;
+    let port = std::env::var("GATEPORT").unwrap_or_else(|_| str("6174"));
+    let addr = format!("[::1]:{port}").parse()?;
     let storage = std::env::var("GATESTORAGE")
         .unwrap_or_else(|_| str("file:/tmp/gatehouse"))
         .into();

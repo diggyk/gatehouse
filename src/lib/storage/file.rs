@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use tonic::async_trait;
 
-use crate::entity::RegisteredEntity;
+use crate::actor::RegisteredActor;
 use crate::group::RegisteredGroup;
 use crate::policy::RegisteredPolicyRule;
 use crate::role::RegisteredRole;
@@ -20,7 +20,7 @@ impl FileStorage {
             .await
             .expect("Could not create file backend storage");
 
-        tokio::fs::create_dir_all(format!("{}/entities/", basepath))
+        tokio::fs::create_dir_all(format!("{}/actors/", basepath))
             .await
             .expect("Could not create file backend storage");
 
@@ -102,11 +102,8 @@ impl Storage for FileStorage {
         Ok(targets)
     }
 
-    async fn save_entity(&self, tgt: &RegisteredEntity) -> Result<(), String> {
-        let target_path = format!(
-            "{}/entities/{}-{}.json",
-            self.basepath, tgt.typestr, tgt.name
-        );
+    async fn save_actor(&self, tgt: &RegisteredActor) -> Result<(), String> {
+        let target_path = format!("{}/actors/{}-{}.json", self.basepath, tgt.typestr, tgt.name);
 
         let json = serde_json::to_string(&tgt).map_err(|err| err.to_string())?;
 
@@ -117,11 +114,8 @@ impl Storage for FileStorage {
         Ok(())
     }
 
-    async fn remove_entity(&self, tgt: &RegisteredEntity) -> Result<(), String> {
-        let target_path = format!(
-            "{}/entities/{}-{}.json",
-            self.basepath, tgt.typestr, tgt.name
-        );
+    async fn remove_actor(&self, tgt: &RegisteredActor) -> Result<(), String> {
+        let target_path = format!("{}/actors/{}-{}.json", self.basepath, tgt.typestr, tgt.name);
 
         tokio::fs::remove_file(target_path)
             .await
@@ -130,21 +124,21 @@ impl Storage for FileStorage {
         Ok(())
     }
 
-    async fn load_entities(
+    async fn load_actors(
         &self,
-    ) -> Result<HashMap<String, HashMap<String, RegisteredEntity>>, String> {
+    ) -> Result<HashMap<String, HashMap<String, RegisteredActor>>, String> {
         let mut targets = HashMap::new();
 
-        let mut dir = tokio::fs::read_dir(format!("{}/entities", self.basepath))
+        let mut dir = tokio::fs::read_dir(format!("{}/actors", self.basepath))
             .await
-            .expect("Could not read entities from filesystem");
+            .expect("Could not read actors from filesystem");
 
         while let Some(entry) = dir.next_entry().await.map_err(|err| err.to_string())? {
             let json = tokio::fs::read_to_string(entry.path())
                 .await
                 .map_err(|err| err.to_string())?;
 
-            let target: RegisteredEntity =
+            let target: RegisteredActor =
                 serde_json::from_str(&json).map_err(|err| err.to_string())?;
 
             // get or create the hashmap for this "type" of target
@@ -187,7 +181,7 @@ impl Storage for FileStorage {
 
         let mut dir = tokio::fs::read_dir(format!("{}/roles", self.basepath))
             .await
-            .expect("Could not read entities from filesystem");
+            .expect("Could not read actors from filesystem");
 
         while let Some(entry) = dir.next_entry().await.map_err(|err| err.to_string())? {
             let json = tokio::fs::read_to_string(entry.path())
@@ -235,7 +229,7 @@ impl Storage for FileStorage {
 
         let mut dir = tokio::fs::read_dir(format!("{}/groups", self.basepath))
             .await
-            .expect("Could not read entities from filesystem");
+            .expect("Could not read actors from filesystem");
 
         while let Some(entry) = dir.next_entry().await.map_err(|err| err.to_string())? {
             let json = tokio::fs::read_to_string(entry.path())

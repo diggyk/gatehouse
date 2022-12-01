@@ -9,31 +9,31 @@ use tokio::sync::oneshot::Sender;
 use tokio::sync::RwLock;
 use tonic::Status;
 
-use crate::entity::RegisteredEntity;
+use crate::actor::RegisteredActor;
 use crate::group::{RegisteredGroup, RegisteredGroupMember};
 use crate::msgs::{DsRequest, DsResponse};
 use crate::policy::{Decide, RegisteredPolicyRule};
 use crate::proto::base::CheckRequest;
 use crate::StorageType;
 
-use crate::proto::entities::{
-    AddEntityRequest, Entity, GetAllEntitiesRequest, ModifyEntityRequest, RemoveEntityRequest,
+use crate::proto::actors::{
+    Actor, AddActorRequest, GetActorsRequest, ModifyActorRequest, RemoveActorRequest,
 };
 use crate::proto::groups::{
-    AddGroupRequest, GetAllGroupsRequest, ModifyGroupRequest, RemoveGroupRequest,
+    AddGroupRequest, GetGroupsRequest, ModifyGroupRequest, RemoveGroupRequest,
 };
 use crate::proto::policies::{
     AddPolicyRequest, GetPoliciesRequest, ModifyPolicyRequest, PolicyRule, RemovePolicyRequest,
 };
-use crate::proto::roles::{AddRoleRequest, GetAllRolesRequest, RemoveRoleRequest, Role};
+use crate::proto::roles::{AddRoleRequest, GetRolesRequest, RemoveRoleRequest, Role};
 use crate::proto::targets::{
-    AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
+    AddTargetRequest, GetTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
 };
 use crate::role::RegisteredRole;
 use crate::storage::etcd::EtcdStorage;
 use crate::storage::file::FileStorage;
 use crate::storage::nil::NilStorage;
-use crate::storage::Storage;
+use crate::storage::{BackendUpdate, Storage};
 use crate::target::RegisteredTarget;
 
 pub struct Datastore {
@@ -43,8 +43,8 @@ pub struct Datastore {
     /// HashMap from type string to HashMap of name to registered target
     targets: Arc<RwLock<HashMap<String, HashMap<String, RegisteredTarget>>>>,
 
-    /// HashMap from type string to HashMap of name to registered entity
-    entities: Arc<RwLock<HashMap<String, HashMap<String, RegisteredEntity>>>>,
+    /// HashMap from type string to HashMap of name to registered actor
+    actors: Arc<RwLock<HashMap<String, HashMap<String, RegisteredActor>>>>,
 
     /// HashMap of name to registered roles
     roles: Arc<RwLock<HashMap<String, RegisteredRole>>>,
@@ -57,9 +57,13 @@ pub struct Datastore {
 }
 
 impl Datastore {
-    async fn new(backend: &StorageType, rx: Receiver<DsRequest>) -> Self {
+    async fn new(
+        backend: &StorageType,
+        req_tx: flume::Sender<DsRequest>,
+        req_rx: Receiver<DsRequest>,
+    ) -> Self {
         let backend: Box<dyn Storage + Send + Sync> = match backend {
-            StorageType::Etcd(url) => Box::new(EtcdStorage::new(url).await),
+            StorageType::Etcd(url) => Box::new(EtcdStorage::new(url, req_tx).await),
             StorageType::FileSystem(path) => Box::new(FileStorage::new(path).await),
             StorageType::Nil => Box::new(NilStorage {}),
         };
@@ -69,10 +73,10 @@ impl Datastore {
             .await
             .expect("Could not load targets from backend");
 
-        let entities = backend
-            .load_entities()
+        let actors = backend
+            .load_actors()
             .await
-            .expect("Could not load entities from backend");
+            .expect("Could not load actors from backend");
 
         let roles = backend
             .load_roles()
@@ -90,10 +94,10 @@ impl Datastore {
             .expect("Could not load policies from backend");
 
         Datastore {
-            rx,
+            rx: req_rx,
             storage: backend,
             targets: Arc::new(RwLock::new(targets)),
-            entities: Arc::new(RwLock::new(entities)),
+            actors: Arc::new(RwLock::new(actors)),
             roles: Arc::new(RwLock::new(roles)),
             groups: Arc::new(RwLock::new(groups)),
             policies: Arc::new(RwLock::new(policies)),
@@ -102,15 +106,15 @@ impl Datastore {
 
     /// How the datastore is actually created, returning only the sender channel
     pub(crate) async fn create(backend: &StorageType) -> flume::Sender<DsRequest> {
-        let (tx, rx) = flume::unbounded();
-        let ds = Self::new(backend, rx).await;
+        let (req_tx, req_rx) = flume::unbounded();
+        let ds = Self::new(backend, req_tx.clone(), req_rx).await;
 
         let arc_ds = Arc::new(ds);
         tokio::spawn(async move {
             arc_ds.run().await;
         });
 
-        tx
+        req_tx
     }
 
     /// Our main run loop.  We listen to incoming messages from the server and respond accordingly
@@ -132,17 +136,17 @@ impl Datastore {
                     tokio::spawn(async move { me.get_targets(req, tx).await });
                 }
                 // ENTITIES
-                DsRequest::AddEntity(req, tx) => {
-                    tokio::spawn(async move { me.add_entity(req, tx).await });
+                DsRequest::AddActor(req, tx) => {
+                    tokio::spawn(async move { me.add_actor(req, tx).await });
                 }
-                DsRequest::ModifyEntity(req, tx) => {
-                    tokio::spawn(async move { me.modify_entity(req, tx).await });
+                DsRequest::ModifyActor(req, tx) => {
+                    tokio::spawn(async move { me.modify_actor(req, tx).await });
                 }
-                DsRequest::RemoveEntity(req, tx) => {
-                    tokio::spawn(async move { me.remove_entity(req, tx).await });
+                DsRequest::RemoveActor(req, tx) => {
+                    tokio::spawn(async move { me.remove_actor(req, tx).await });
                 }
-                DsRequest::GetEntities(req, tx) => {
-                    tokio::spawn(async move { me.get_entities(req, tx).await });
+                DsRequest::GetActors(req, tx) => {
+                    tokio::spawn(async move { me.get_actors(req, tx).await });
                 }
                 // ROLES
                 DsRequest::AddRole(req, tx) => {
@@ -183,6 +187,10 @@ impl Datastore {
                 // CHECKS
                 DsRequest::Check(req, tx) => {
                     tokio::spawn(async move { me.check(req, tx).await });
+                }
+                // UPDATES FROM BACKEND
+                DsRequest::Update(req) => {
+                    tokio::spawn(async move { me.update(req).await });
                 }
             }
         }
@@ -365,7 +373,7 @@ impl Datastore {
     }
 
     /// Get all targets, optionally filtered by type
-    async fn get_targets(&self, req: GetAllTargetsRequest, tx: Sender<DsResponse>) {
+    async fn get_targets(&self, req: GetTargetsRequest, tx: Sender<DsResponse>) {
         let typestr = req.typestr.map(|t| t.to_ascii_lowercase());
         let name = req.name.map(|t| t.to_ascii_lowercase());
         let mut found_targets: Vec<Target> = Vec::new();
@@ -389,28 +397,28 @@ impl Datastore {
         let _ = tx.send(DsResponse::MultipleTargets(found_targets));
     }
 
-    /// Add a new entity
-    async fn add_entity(&self, req: AddEntityRequest, tx: Sender<DsResponse>) {
+    /// Add a new actor
+    async fn add_actor(&self, req: AddActorRequest, tx: Sender<DsResponse>) {
         let name = req.name.to_ascii_lowercase();
         let typestr = req.typestr.to_ascii_lowercase();
 
         // get or create the hashmap for this "type" of target
-        let mut entities = self.entities.write().await;
-        let typed_entities = entities.entry(typestr.clone()).or_insert_with(HashMap::new);
+        let mut actors = self.actors.write().await;
+        let typed_actors = actors.entry(typestr.clone()).or_insert_with(HashMap::new);
 
-        // if entity already exists, return an error
-        if typed_entities.contains_key(&name) {
-            println!("Entity already exists: {}/{}", typestr, name);
+        // if actor already exists, return an error
+        if typed_actors.contains_key(&name) {
+            println!("Actor already exists: {}/{}", typestr, name);
 
             // TODO! -- do something with error
             let _ = tx.send(DsResponse::Error(Status::already_exists(
-                "Entity already exists",
+                "Actor already exists",
             )));
             return;
         }
 
         // drop the lock
-        drop(entities);
+        drop(actors);
 
         // convert the attributes to a hashmap
         let mut attributes = HashMap::new();
@@ -418,13 +426,13 @@ impl Datastore {
             attributes.insert(key, HashSet::from_iter(vals.values));
         }
 
-        let new_entity = RegisteredEntity::new(&name, &typestr, attributes);
+        let new_actor = RegisteredActor::new(&name, &typestr, attributes);
 
-        match self.storage.save_entity(&new_entity).await {
+        match self.storage.save_actor(&new_actor).await {
             Ok(_) => {
-                let mut entities = self.entities.write().await;
-                let typed_entities = entities.get_mut(&typestr).unwrap();
-                typed_entities.insert(name, new_entity.clone());
+                let mut actors = self.actors.write().await;
+                let typed_actors = actors.get_mut(&typestr).unwrap();
+                typed_actors.insert(name, new_actor.clone());
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -434,67 +442,67 @@ impl Datastore {
         }
 
         // TODO! -- do something with error
-        let _ = tx.send(DsResponse::SingleEntity(new_entity.into()));
+        let _ = tx.send(DsResponse::SingleActor(new_actor.into()));
     }
 
-    /// Modify and existing entity
-    async fn modify_entity(&self, req: ModifyEntityRequest, tx: Sender<DsResponse>) {
+    /// Modify and existing actor
+    async fn modify_actor(&self, req: ModifyActorRequest, tx: Sender<DsResponse>) {
         let name = req.name.to_ascii_lowercase();
         let typestr = req.typestr.to_ascii_lowercase();
 
-        let entities = self.entities.read().await;
+        let actors = self.actors.read().await;
 
-        if !entities.contains_key(&typestr) {
+        if !actors.contains_key(&typestr) {
             // TODO! -- do something with error
             let _ = tx.send(DsResponse::Error(Status::not_found(
-                "Could not find entity by type",
+                "Could not find actor by type",
             )));
             return;
         }
 
-        let typed_entities = entities.get(&typestr).unwrap();
-        if !(typed_entities.contains_key(&name)) {
+        let typed_actors = actors.get(&typestr).unwrap();
+        if !(typed_actors.contains_key(&name)) {
             // TODO! -- do something with error
             let _ = tx.send(DsResponse::Error(Status::not_found(
-                "Could not find entity by name",
+                "Could not find actor by name",
             )));
             return;
         }
 
-        // we'll work with a clone of the entity in case persistence fails
-        let mut updated_entity = typed_entities.get(&name).unwrap().clone();
+        // we'll work with a clone of the actor in case persistence fails
+        let mut updated_actor = typed_actors.get(&name).unwrap().clone();
 
         // drop the lock
-        drop(entities);
+        drop(actors);
 
         // update attributes
         for attrib in req.add_attributes {
             let key = attrib.0;
             let values = attrib.1.values;
 
-            let attrib_entry = updated_entity.attributes.entry(key).or_default();
+            let attrib_entry = updated_actor.attributes.entry(key).or_default();
             attrib_entry.extend(values);
         }
         for attrib in req.remove_attributes {
             let key = attrib.0;
             let values = attrib.1.values;
 
-            if let Some(current_values) = updated_entity.attributes.get_mut(&key) {
+            if let Some(current_values) = updated_actor.attributes.get_mut(&key) {
                 for value in values {
                     current_values.remove(&value);
                 }
 
                 if current_values.is_empty() {
-                    updated_entity.attributes.remove(&key);
+                    updated_actor.attributes.remove(&key);
                 }
             }
         }
 
-        match self.storage.save_entity(&updated_entity).await {
+        match self.storage.save_actor(&updated_actor).await {
             Ok(_) => {
-                let mut entities = self.entities.write().await;
-                let typed_entities = entities.get_mut(&typestr).unwrap();
-                let _ = typed_entities.insert(name.clone(), updated_entity.clone());
+                let mut actors = self.actors.write().await;
+                let typed_actors = actors.get_mut(&typestr).unwrap();
+                let _ = typed_actors.insert(name.clone(), updated_actor.clone());
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -504,47 +512,47 @@ impl Datastore {
         }
 
         // TODO! -- do something with error
-        let _ = tx.send(DsResponse::SingleEntity(updated_entity.clone().into()));
+        let _ = tx.send(DsResponse::SingleActor(updated_actor.clone().into()));
     }
 
-    /// Remove an existing entity
-    async fn remove_entity(&self, req: RemoveEntityRequest, tx: Sender<DsResponse>) {
+    /// Remove an existing actor
+    async fn remove_actor(&self, req: RemoveActorRequest, tx: Sender<DsResponse>) {
         let name = req.name.to_ascii_lowercase();
         let typestr = req.typestr.to_ascii_lowercase();
 
-        let entities = self.entities.read().await;
+        let actors = self.actors.read().await;
 
         // make sure the target type exists
-        if !entities.contains_key(&typestr) {
+        if !actors.contains_key(&typestr) {
             // TODO! -- do something with error
             let _ = tx.send(DsResponse::Error(Status::not_found(
-                "Could not find entity by type",
+                "Could not find actor by type",
             )));
             return;
         }
 
         // make sure the target exists
-        let typed_entities = entities.get(&typestr).unwrap();
-        if !(typed_entities.contains_key(&name)) {
+        let typed_actors = actors.get(&typestr).unwrap();
+        if !(typed_actors.contains_key(&name)) {
             // TODO! -- do something with error
             let _ = tx.send(DsResponse::Error(Status::not_found(
-                "Could not find entity by name",
+                "Could not find actor by name",
             )));
             return;
         }
 
-        // get the existing entity
-        let existing_entity = typed_entities.get(&name).unwrap().clone();
+        // get the existing actor
+        let existing_actor = typed_actors.get(&name).unwrap().clone();
 
         // drop the lock
-        drop(entities);
+        drop(actors);
 
         // try to persist the new target to the backend and if that succeeds, update it in memory
-        match self.storage.remove_entity(&existing_entity).await {
+        match self.storage.remove_actor(&existing_actor).await {
             Ok(_) => {
-                let mut entities = self.entities.write().await;
-                let typed_entities = entities.get_mut(&typestr).unwrap();
-                let _ = typed_entities.remove(&name);
+                let mut actors = self.actors.write().await;
+                let typed_actors = actors.get_mut(&typestr).unwrap();
+                let _ = typed_actors.remove(&name);
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -554,35 +562,35 @@ impl Datastore {
         }
 
         // TODO! -- do something with error
-        let _ = tx.send(DsResponse::SingleEntity(existing_entity.clone().into()));
+        let _ = tx.send(DsResponse::SingleActor(existing_actor.clone().into()));
     }
 
-    /// Get all entities, optionally filtered by type
-    async fn get_entities(&self, req: GetAllEntitiesRequest, tx: Sender<DsResponse>) {
+    /// Get all actors, optionally filtered by type
+    async fn get_actors(&self, req: GetActorsRequest, tx: Sender<DsResponse>) {
         let type_filter = req.typestr.map(|t| t.to_ascii_lowercase());
         let name_filter = req.name.map(|t| t.to_ascii_lowercase());
-        let mut found_entities: Vec<Entity> = Vec::new();
+        let mut found_actors: Vec<Actor> = Vec::new();
 
-        let entities = self.entities.read().await;
+        let actors = self.actors.read().await;
 
-        for (typestr, entities_of_type) in entities.iter() {
+        for (typestr, actors_of_type) in actors.iter() {
             if let Some(ref filter_type) = type_filter {
                 if typestr.as_str() != filter_type {
                     continue;
                 }
             }
-            for (entity_name, entity) in entities_of_type.iter() {
+            for (actor_name, actor) in actors_of_type.iter() {
                 if let Some(ref name_ref) = name_filter {
-                    if entity_name.as_str() != name_ref {
+                    if actor_name.as_str() != name_ref {
                         continue;
                     }
                 }
-                let expanded_entity = self.expand_groups_and_roles(entity.clone()).await;
-                found_entities.push(expanded_entity.into());
+                let expanded_actor = self.expand_groups_and_roles(actor.clone()).await;
+                found_actors.push(expanded_actor.into());
             }
         }
 
-        let _ = tx.send(DsResponse::MultipleEntities(found_entities));
+        let _ = tx.send(DsResponse::MultipleActors(found_actors));
     }
 
     /// Add a role
@@ -591,7 +599,7 @@ impl Datastore {
 
         let new_role = RegisteredRole::new(&role);
 
-        // if entity already exists, return an error
+        // if actor already exists, return an error
         if self.roles.read().await.contains_key(&role) {
             println!("Role already exists: {}", role);
 
@@ -676,7 +684,7 @@ impl Datastore {
     }
 
     /// Get all roles
-    async fn get_roles(&self, req: GetAllRolesRequest, tx: Sender<DsResponse>) {
+    async fn get_roles(&self, req: GetRolesRequest, tx: Sender<DsResponse>) {
         let mut roles: Vec<Role> = Vec::new();
 
         if req.name.is_none() {
@@ -693,12 +701,12 @@ impl Datastore {
         let _ = tx.send(DsResponse::MultipleRoles(roles));
     }
 
-    /// Add group. We cross reference role membership in the registered roles but not in entities
+    /// Add group. We cross reference role membership in the registered roles but not in actors
     /// because it is perfectly legal to have members of groups that will be expressed externally
     async fn add_group(&self, req: AddGroupRequest, tx: Sender<DsResponse>) {
         let name = req.name.to_ascii_lowercase();
 
-        // if entity already exists, return an error
+        // if actor already exists, return an error
         if self.groups.read().await.contains_key(&name) {
             println!("Group already exists: {}", name);
 
@@ -920,7 +928,7 @@ impl Datastore {
     }
 
     /// Get groups based on filter
-    async fn get_groups(&self, req: GetAllGroupsRequest, tx: Sender<DsResponse>) {
+    async fn get_groups(&self, req: GetGroupsRequest, tx: Sender<DsResponse>) {
         let name_filter = req.name;
         let member_filter = req.member;
         let role_filter = req.role;
@@ -1096,21 +1104,84 @@ impl Datastore {
         let _ = tx.send(DsResponse::MultiplePolicies(policies));
     }
 
+    /// Update data directly
+    ///
+    /// We get these updates from the backend when working in a distributed model so we
+    /// want to update the data in the memory store when getting these updates
+    /// TODO -- we should only update the memory when we get this call from the backend
+    ///         rather than doing it directly on an update request. And we should do it
+    ///         in transactions when changing multiple entities at once, like when adding
+    ///         roles to groups
+    async fn update(&self, req: BackendUpdate) {
+        match req {
+            BackendUpdate::PutActor(actor) => {
+                let mut actors = self.actors.write().await;
+                let typed_actors = actors
+                    .entry(actor.typestr.clone())
+                    .or_insert_with(HashMap::new);
+                typed_actors.insert(actor.name.clone(), actor);
+            }
+            BackendUpdate::PutGroup(group) => {
+                let mut groups = self.groups.write().await;
+                groups.insert(group.name.clone(), group);
+            }
+            BackendUpdate::PutPolicyRule(policyrule) => {
+                let mut policies = self.policies.write().await;
+                policies.insert(policyrule.name.clone(), policyrule);
+            }
+            BackendUpdate::PutRole(role) => {
+                let mut roles = self.roles.write().await;
+                roles.insert(role.name.clone(), role);
+            }
+            BackendUpdate::PutTarget(target) => {
+                let mut targets = self.targets.write().await;
+                let type_targets = targets
+                    .entry(target.typestr.clone())
+                    .or_insert_with(HashMap::new);
+                type_targets.insert(target.name.clone(), target);
+            }
+            BackendUpdate::DeleteActor(typestr, name) => {
+                let mut actors = self.actors.write().await;
+                if let Some(typed_actors) = actors.get_mut(&typestr) {
+                    typed_actors.remove(&name);
+                }
+            }
+            BackendUpdate::DeleteGroup(name) => {
+                let mut groups = self.groups.write().await;
+                groups.remove(&name);
+            }
+            BackendUpdate::DeletePolicyRule(name) => {
+                let mut policies = self.policies.write().await;
+                policies.remove(&name);
+            }
+            BackendUpdate::DeleteRole(name) => {
+                let mut roles = self.roles.write().await;
+                roles.remove(&name);
+            }
+            BackendUpdate::DeleteTarget(typestr, name) => {
+                let mut targets = self.targets.write().await;
+                if let Some(typed_targets) = targets.get_mut(&typestr) {
+                    typed_targets.remove(&name);
+                }
+            }
+        }
+    }
+
     /// Perform a check
     ///
-    /// We will receive an entity (type and name) and a list of attributes that the policy
-    /// enforcement point (PEP) wants to share about the entity. PEP may also share environment
+    /// We will receive an actor (type and name) and a list of attributes that the policy
+    /// enforcement point (PEP) wants to share about the actor. PEP may also share environment
     /// attributes in the form of key/val pairs (vals are a list). Finally, the PEP will specify
     /// the target (name and type) and action to be checked against the policies. DS will evaluate
     /// against known policy rules and decide on a ALLOW/DENY decision.
     ///
-    /// The entity may match a registered entity, in which case, we'll add some more attributes if
-    /// we have them. The entity may also belong to a group which has been granted some roles.
+    /// The actor may match a registered actor, in which case, we'll add some more attributes if
+    /// we have them. The actor may also belong to a group which has been granted some roles.
     /// In that case, we will add "member-of" attributes for each group, and "has-role" attributes
     /// for each role. Lastly, we will determine a bucket (between 0-99) using the murmur3 algo
     async fn check(&self, req: CheckRequest, tx: Sender<DsResponse>) {
-        let entity = self
-            .extend_entity(RegisteredEntity::from(req.entity.unwrap()))
+        let actor = self
+            .extend_actor(RegisteredActor::from(req.actor.unwrap()))
             .await;
 
         let mut env_attributes = HashMap::new();
@@ -1124,14 +1195,14 @@ impl Datastore {
             .await;
 
         // TODO -- refactor the policy store to make applicable polices quicker to find
-        // Examine every policy -- if the entity check, environment check, and target check's pass
+        // Examine every policy -- if the actor check, environment check, and target check's pass
         // then we can make a determination. If we get an explicit DENY from any rule, we exit
         // immediately.
         let mut decision = Decide::Deny;
         for (_, policy) in self.policies.read().await.iter() {
-            if let Some(ref entity_check) = policy.entity_check {
-                if !entity_check.check(&entity) {
-                    // this entity check does not apply to this request
+            if let Some(ref actor_check) = policy.actor_check {
+                if !actor_check.check(&actor) {
+                    // this actor check does not apply to this request
                     continue;
                 }
             }
@@ -1152,7 +1223,7 @@ impl Datastore {
                     &req.target_type,
                     &target_attributes,
                     &req.target_action,
-                    &entity.attributes,
+                    &actor.attributes,
                     &env_attributes,
                 ) {
                     // this target does not match
@@ -1171,44 +1242,42 @@ impl Datastore {
     }
 
     /** HELPERS */
-    /// Extend a given entity with additional attributes
+    /// Extend a given actor with additional attributes
     ///
-    /// Given a RegisteredEntity created just from a gRPC call,
+    /// Given a RegisteredActor created just from a gRPC call,
     /// update it with any additional attributes from a
-    /// known entity, as well as any group/roles we might have.
-    async fn extend_entity(&self, mut entity: RegisteredEntity) -> RegisteredEntity {
-        let entities = self.entities.read().await;
-        let typed_entities = entities.get(&entity.typestr);
+    /// known actor, as well as any group/roles we might have.
+    async fn extend_actor(&self, mut actor: RegisteredActor) -> RegisteredActor {
+        let actors = self.actors.read().await;
+        let typed_actors = actors.get(&actor.typestr);
 
-        // extend attributes if we know about this entity
-        if let Some(typed_entities) = typed_entities {
-            if let Some(found_entity) = typed_entities.get(&entity.name).map(|e| e.to_owned()) {
-                entity
-                    .attributes
-                    .extend(found_entity.attributes.into_iter());
+        // extend attributes if we know about this actor
+        if let Some(typed_actors) = typed_actors {
+            if let Some(found_actor) = typed_actors.get(&actor.name).map(|e| e.to_owned()) {
+                actor.attributes.extend(found_actor.attributes.into_iter());
             }
         }
 
-        entity = self.expand_groups_and_roles(entity).await;
+        actor = self.expand_groups_and_roles(actor).await;
 
-        entity
+        actor
     }
 
-    async fn expand_groups_and_roles(&self, mut entity: RegisteredEntity) -> RegisteredEntity {
-        // create a representation of this entity as a RegisteredGroupMember so we can search for it
-        let entity_as_member = RegisteredGroupMember::from(&entity);
+    async fn expand_groups_and_roles(&self, mut actor: RegisteredActor) -> RegisteredActor {
+        // create a representation of this actor as a RegisteredGroupMember so we can search for it
+        let actor_as_member = RegisteredGroupMember::from(&actor);
 
         let groups = self.groups.read().await;
 
         for group in groups.values() {
-            if group.members.contains(&entity_as_member) {
-                entity
+            if group.members.contains(&actor_as_member) {
+                actor
                     .attributes
                     .entry("member-of".to_string())
                     .or_default()
                     .insert(group.name.clone());
 
-                entity
+                actor
                     .attributes
                     .entry("has-role".to_string())
                     .or_default()
@@ -1216,7 +1285,7 @@ impl Datastore {
             }
         }
 
-        entity
+        actor
     }
 
     /// Return attributes for a target if known
@@ -1253,9 +1322,9 @@ mod tests {
 
     #[test]
     async fn test_targets() {
-        let (_, rx) = flume::unbounded();
+        let (req_tx, req_rx) = flume::unbounded();
         let (tx, _) = channel::<DsResponse>();
-        let ds = Datastore::new(&StorageType::Nil, rx).await;
+        let ds = Datastore::new(&StorageType::Nil, req_tx, req_rx).await;
 
         let mut map: HashMap<String, AttributeValues> = HashMap::new();
         map.insert(

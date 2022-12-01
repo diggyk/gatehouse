@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use tonic::async_trait;
 
-use crate::entity::RegisteredEntity;
+use crate::actor::RegisteredActor;
 use crate::group::RegisteredGroup;
 use crate::policy::RegisteredPolicyRule;
 use crate::role::RegisteredRole;
@@ -25,15 +25,15 @@ impl Storage for NilStorage {
     ) -> Result<HashMap<String, HashMap<String, RegisteredTarget>>, String> {
         Ok(HashMap::new())
     }
-    async fn save_entity(&self, _tgt: &RegisteredEntity) -> Result<(), String> {
+    async fn save_actor(&self, _tgt: &RegisteredActor) -> Result<(), String> {
         Ok(())
     }
-    async fn remove_entity(&self, _tgt: &RegisteredEntity) -> Result<(), String> {
+    async fn remove_actor(&self, _tgt: &RegisteredActor) -> Result<(), String> {
         Ok(())
     }
-    async fn load_entities(
+    async fn load_actors(
         &self,
-    ) -> Result<HashMap<String, HashMap<String, RegisteredEntity>>, String> {
+    ) -> Result<HashMap<String, HashMap<String, RegisteredActor>>, String> {
         Ok(HashMap::new())
     }
     async fn save_role(&self, _role: &RegisteredRole) -> Result<(), String> {

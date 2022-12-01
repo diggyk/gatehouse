@@ -17,13 +17,13 @@ pub mod proto {
         tonic::include_proto!("gatehouse");
     }
 
-    /// Entity related protobufs
-    pub mod entities {
+    /// Actor related protobufs
+    pub mod actors {
         use std::fmt::Display;
 
-        tonic::include_proto!("entities");
+        tonic::include_proto!("actors");
 
-        impl Display for Entity {
+        impl Display for Actor {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 let attribvals = self
                     .attributes
@@ -160,8 +160,8 @@ impl StorageType {
     }
 }
 
+pub(crate) mod actor;
 pub(crate) mod ds;
-pub(crate) mod entity;
 pub(crate) mod group;
 pub mod helpers;
 pub(crate) mod msgs;

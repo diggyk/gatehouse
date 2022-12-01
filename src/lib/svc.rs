@@ -7,14 +7,14 @@ use tonic::{Request, Response, Status};
 
 use crate::ds::Datastore;
 use crate::msgs::{DsRequest, DsResponse};
+use crate::proto::actors::{
+    ActorResponse, AddActorRequest, GetActorsRequest, ModifyActorRequest, MultiActorResponse,
+    RemoveActorRequest,
+};
 use crate::proto::base::gatehouse_server::Gatehouse;
 use crate::proto::base::{CheckRequest, CheckResponse};
-use crate::proto::entities::{
-    AddEntityRequest, EntityResponse, GetAllEntitiesRequest, ModifyEntityRequest,
-    MultiEntityResponse, RemoveEntityRequest,
-};
 use crate::proto::groups::{
-    AddGroupRequest, GetAllGroupsRequest, GroupResponse, ModifyGroupRequest, MultiGroupResponse,
+    AddGroupRequest, GetGroupsRequest, GroupResponse, ModifyGroupRequest, MultiGroupResponse,
     RemoveGroupRequest,
 };
 use crate::proto::policies::{
@@ -22,10 +22,10 @@ use crate::proto::policies::{
     RemovePolicyRequest,
 };
 use crate::proto::roles::{
-    AddRoleRequest, GetAllRolesRequest, MultiRoleResponse, RemoveRoleRequest, RoleResponse,
+    AddRoleRequest, GetRolesRequest, MultiRoleResponse, RemoveRoleRequest, RoleResponse,
 };
 use crate::proto::targets::{
-    AddTargetRequest, GetAllTargetsRequest, ModifyTargetRequest, MultiTargetResponse,
+    AddTargetRequest, GetTargetsRequest, ModifyTargetRequest, MultiTargetResponse,
     RemoveTargetRequest, TargetResponse,
 };
 use crate::StorageType;
@@ -154,7 +154,7 @@ impl Gatehouse for GatehouseSvc {
     /// Get all targets
     async fn get_targets(
         &self,
-        request: Request<GetAllTargetsRequest>,
+        request: Request<GetTargetsRequest>,
     ) -> Result<Response<MultiTargetResponse>, Status> {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
@@ -175,81 +175,67 @@ impl Gatehouse for GatehouseSvc {
 
     //** ENTITIES **//
 
-    /// Add an entity
-    async fn add_entity(
+    /// Add an actor
+    async fn add_actor(
         &self,
-        request: Request<AddEntityRequest>,
-    ) -> Result<Response<EntityResponse>, Status> {
+        request: Request<AddActorRequest>,
+    ) -> Result<Response<ActorResponse>, Status> {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
 
         // wait for the datastore to respond
         match self
-            .call_datastore(DsRequest::AddEntity(req.clone(), tx), "add entity", rx)
+            .call_datastore(DsRequest::AddActor(req.clone(), tx), "add actor", rx)
             .await?
         {
-            DsResponse::SingleEntity(entity) => {
+            DsResponse::SingleActor(actor) => {
                 //TODO! -- add metrics
-                println!("Added entity {}", entity);
-                Ok(Response::new(EntityResponse {
-                    entity: Some(entity),
-                }))
+                println!("Added actor {}", actor);
+                Ok(Response::new(ActorResponse { actor: Some(actor) }))
             }
             DsResponse::Error(status) => return Err(status),
             _ => return Err(Status::internal("Got unexpected answer from datastore")),
         }
     }
 
-    /// Modify an entity
-    async fn modify_entity(
+    /// Modify an actor
+    async fn modify_actor(
         &self,
-        request: Request<ModifyEntityRequest>,
-    ) -> Result<Response<EntityResponse>, Status> {
+        request: Request<ModifyActorRequest>,
+    ) -> Result<Response<ActorResponse>, Status> {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
 
         match self
-            .call_datastore(
-                DsRequest::ModifyEntity(req.clone(), tx),
-                "modify entity",
-                rx,
-            )
+            .call_datastore(DsRequest::ModifyActor(req.clone(), tx), "modify actor", rx)
             .await?
         {
-            DsResponse::SingleEntity(entity) => {
+            DsResponse::SingleActor(actor) => {
                 //TODO! -- add metrics
-                println!("Modify entity {}", entity);
-                Ok(Response::new(EntityResponse {
-                    entity: Some(entity),
-                }))
+                println!("Modify actor {}", actor);
+                Ok(Response::new(ActorResponse { actor: Some(actor) }))
             }
             DsResponse::Error(status) => return Err(status),
             _ => return Err(Status::internal("Got unexpected answer from datastore")),
         }
     }
 
-    /// Remove an entity
-    async fn remove_entity(
+    /// Remove an actor
+    async fn remove_actor(
         &self,
-        request: Request<RemoveEntityRequest>,
-    ) -> Result<Response<EntityResponse>, Status> {
+        request: Request<RemoveActorRequest>,
+    ) -> Result<Response<ActorResponse>, Status> {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
 
         match self
-            .call_datastore(
-                DsRequest::RemoveEntity(req.clone(), tx),
-                "remove entity",
-                rx,
-            )
+            .call_datastore(DsRequest::RemoveActor(req.clone(), tx), "remove actor", rx)
             .await?
         {
-            DsResponse::SingleEntity(entity) => {
+            DsResponse::SingleActor(actor) => {
                 //TODO! -- add metrics
-                println!("Remove entity {}", entity);
-                Ok(Response::new(EntityResponse {
-                    entity: Some(entity),
-                }))
+                println!("Remove actor {}", actor);
+                Ok(Response::new(ActorResponse { actor: Some(actor) }))
             }
             DsResponse::Error(status) => return Err(status),
             _ => return Err(Status::internal("Got unexpected answer from datastore")),
@@ -257,21 +243,21 @@ impl Gatehouse for GatehouseSvc {
     }
 
     /// Get all entries
-    async fn get_entities(
+    async fn get_actors(
         &self,
-        request: Request<GetAllEntitiesRequest>,
-    ) -> Result<Response<MultiEntityResponse>, Status> {
+        request: Request<GetActorsRequest>,
+    ) -> Result<Response<MultiActorResponse>, Status> {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
 
         match self
-            .call_datastore(DsRequest::GetEntities(req.clone(), tx), "get entities", rx)
+            .call_datastore(DsRequest::GetActors(req.clone(), tx), "get actors", rx)
             .await?
         {
-            DsResponse::MultipleEntities(entities) => {
+            DsResponse::MultipleActors(actors) => {
                 //TODO! -- add metrics
-                println!("Got {} entities", entities.len());
-                return Ok(Response::new(MultiEntityResponse { entities }));
+                println!("Got {} actors", actors.len());
+                return Ok(Response::new(MultiActorResponse { actors }));
             }
             DsResponse::Error(status) => return Err(status),
             _ => return Err(Status::internal("Got unexpected answer from datastore")),
@@ -327,7 +313,7 @@ impl Gatehouse for GatehouseSvc {
     /// Get all roles (or a specific one by name)
     async fn get_roles(
         &self,
-        request: Request<GetAllRolesRequest>,
+        request: Request<GetRolesRequest>,
     ) -> Result<Response<MultiRoleResponse>, Status> {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
@@ -417,7 +403,7 @@ impl Gatehouse for GatehouseSvc {
     /// Get groups (with optional filters)
     async fn get_groups(
         &self,
-        request: Request<GetAllGroupsRequest>,
+        request: Request<GetGroupsRequest>,
     ) -> Result<Response<MultiGroupResponse>, Status> {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
@@ -532,7 +518,7 @@ impl Gatehouse for GatehouseSvc {
         }
     }
 
-    /// Make a decision an entity wanting to take an action on a target
+    /// Make a decision an actor wanting to take an action on a target
     async fn check(
         &self,
         request: Request<CheckRequest>,
@@ -540,8 +526,8 @@ impl Gatehouse for GatehouseSvc {
         let req = request.into_inner();
         let (tx, rx) = channel::<DsResponse>();
 
-        if req.entity.is_none() {
-            return Err(Status::invalid_argument("Entity cannot be null"));
+        if req.actor.is_none() {
+            return Err(Status::invalid_argument("Actor cannot be null"));
         }
 
         match self

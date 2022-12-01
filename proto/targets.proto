@@ -72,7 +72,7 @@ message RemoveTargetRequest {
 }
 
 /// Request a list of all targets
-message GetAllTargetsRequest {
+message GetTargetsRequest {
     // optional name to filter by the name
     optional string name = 1;
 
