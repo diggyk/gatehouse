@@ -12,6 +12,20 @@ pub(crate) mod etcd;
 pub(crate) mod file;
 pub(crate) mod nil;
 
+#[derive(Debug)]
+pub(crate) enum BackendUpdate {
+    PutActor(RegisteredActor),
+    PutGroup(RegisteredGroup),
+    PutPolicyRule(RegisteredPolicyRule),
+    PutRole(RegisteredRole),
+    PutTarget(RegisteredTarget),
+    DeleteActor(String, String),
+    DeleteGroup(String),
+    DeletePolicyRule(String),
+    DeleteRole(String),
+    DeleteTarget(String, String),
+}
+
 #[async_trait]
 pub(crate) trait Storage {
     async fn save_target(&self, tgt: &RegisteredTarget) -> Result<(), String>;

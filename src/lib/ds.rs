@@ -33,7 +33,7 @@ use crate::role::RegisteredRole;
 use crate::storage::etcd::EtcdStorage;
 use crate::storage::file::FileStorage;
 use crate::storage::nil::NilStorage;
-use crate::storage::Storage;
+use crate::storage::{BackendUpdate, Storage};
 use crate::target::RegisteredTarget;
 
 pub struct Datastore {
@@ -187,6 +187,10 @@ impl Datastore {
                 // CHECKS
                 DsRequest::Check(req, tx) => {
                     tokio::spawn(async move { me.check(req, tx).await });
+                }
+                // UPDATES FROM BACKEND
+                DsRequest::Update(req) => {
+                    tokio::spawn(async move { me.update(req).await });
                 }
             }
         }
@@ -1098,6 +1102,69 @@ impl Datastore {
         }
 
         let _ = tx.send(DsResponse::MultiplePolicies(policies));
+    }
+
+    /// Update data directly
+    ///
+    /// We get these updates from the backend when working in a distributed model so we
+    /// want to update the data in the memory store when getting these updates
+    /// TODO -- we should only update the memory when we get this call from the backend
+    ///         rather than doing it directly on an update request. And we should do it
+    ///         in transactions when changing multiple entities at once, like when adding
+    ///         roles to groups
+    async fn update(&self, req: BackendUpdate) {
+        match req {
+            BackendUpdate::PutActor(actor) => {
+                let mut actors = self.actors.write().await;
+                let typed_actors = actors
+                    .entry(actor.typestr.clone())
+                    .or_insert_with(HashMap::new);
+                typed_actors.insert(actor.name.clone(), actor);
+            }
+            BackendUpdate::PutGroup(group) => {
+                let mut groups = self.groups.write().await;
+                groups.insert(group.name.clone(), group);
+            }
+            BackendUpdate::PutPolicyRule(policyrule) => {
+                let mut policies = self.policies.write().await;
+                policies.insert(policyrule.name.clone(), policyrule);
+            }
+            BackendUpdate::PutRole(role) => {
+                let mut roles = self.roles.write().await;
+                roles.insert(role.name.clone(), role);
+            }
+            BackendUpdate::PutTarget(target) => {
+                let mut targets = self.targets.write().await;
+                let type_targets = targets
+                    .entry(target.typestr.clone())
+                    .or_insert_with(HashMap::new);
+                type_targets.insert(target.name.clone(), target);
+            }
+            BackendUpdate::DeleteActor(typestr, name) => {
+                let mut actors = self.actors.write().await;
+                if let Some(typed_actors) = actors.get_mut(&typestr) {
+                    typed_actors.remove(&name);
+                }
+            }
+            BackendUpdate::DeleteGroup(name) => {
+                let mut groups = self.groups.write().await;
+                groups.remove(&name);
+            }
+            BackendUpdate::DeletePolicyRule(name) => {
+                let mut policies = self.policies.write().await;
+                policies.remove(&name);
+            }
+            BackendUpdate::DeleteRole(name) => {
+                let mut roles = self.roles.write().await;
+                roles.remove(&name);
+            }
+            BackendUpdate::DeleteTarget(typestr, name) => {
+                let mut targets = self.targets.write().await;
+                if let Some(typed_targets) = targets.get_mut(&typestr) {
+                    typed_targets.remove(&name);
+                }
+            }
+        }
     }
 
     /// Perform a check

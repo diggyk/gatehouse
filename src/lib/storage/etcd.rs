@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::process::exit;
 use std::sync::Arc;
 
-use etcd_client::{Client, Event, GetOptions, WatchOptions, WatchStream};
+use etcd_client::{Client, Event, EventType, GetOptions, WatchOptions, WatchStream};
 use flume::Receiver;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -15,12 +15,13 @@ use crate::group::RegisteredGroup;
 use crate::msgs::DsRequest;
 use crate::policy::RegisteredPolicyRule;
 use crate::role::RegisteredRole;
+use crate::storage::BackendUpdate;
 use crate::target::RegisteredTarget;
 
 use super::Storage;
 
 lazy_static! {
-    static ref TYPE_MATCH: Regex = Regex::new(r"/gatehouse/(.*?)/.*").unwrap();
+    static ref TYPE_MATCH: Regex = Regex::new(r"/gatehouse/(.*?)/(.*)").unwrap();
 }
 
 fn econv<T: std::fmt::Display>(err: T) -> String {
@@ -182,50 +183,102 @@ impl EtcdStorage {
         kill_receiver: Receiver<()>,
         req_tx: flume::Sender<DsRequest>,
     ) -> Result<(), String> {
-        async fn handle_event(event: &Event, req_tx: &flume::Sender<DsRequest>) {
+        // build the message back to the datastore
+        fn build_update(
+            event_type: &EventType,
+            obj_type: &str,
+            obj_name: &str,
+            val: &str,
+        ) -> Result<BackendUpdate, String> {
+            match event_type {
+                EventType::Put => match obj_type {
+                    "actors" => {
+                        let obj: RegisteredActor = serde_json::from_str(val).map_err(econv)?;
+                        Ok(BackendUpdate::PutActor(obj))
+                    }
+                    "groups" => {
+                        let obj: RegisteredGroup = serde_json::from_str(val).map_err(econv)?;
+                        Ok(BackendUpdate::PutGroup(obj))
+                    }
+                    "policies" => {
+                        let obj: RegisteredPolicyRule = serde_json::from_str(val).map_err(econv)?;
+                        Ok(BackendUpdate::PutPolicyRule(obj))
+                    }
+                    "roles" => {
+                        let obj: RegisteredRole = serde_json::from_str(val).map_err(econv)?;
+                        Ok(BackendUpdate::PutRole(obj))
+                    }
+                    "targets" => {
+                        let obj: RegisteredTarget = serde_json::from_str(val).map_err(econv)?;
+                        Ok(BackendUpdate::PutTarget(obj))
+                    }
+                    _ => Err(format!("Unknown object type: {obj_type}")),
+                },
+                EventType::Delete => match obj_type {
+                    "actors" => {
+                        let (typestr, name) = obj_name.split_once('/').ok_or_else(|| {
+                            format!("Could not get type and name from actor {obj_name}")
+                        })?;
+                        Ok(BackendUpdate::DeleteActor(
+                            typestr.to_string(),
+                            name.to_string(),
+                        ))
+                    }
+                    "groups" => Ok(BackendUpdate::DeleteGroup(obj_name.to_string())),
+                    "policies" => Ok(BackendUpdate::DeletePolicyRule(obj_name.to_string())),
+                    "roles" => {
+                        let obj: RegisteredRole = serde_json::from_str(val).map_err(econv)?;
+                        Ok(BackendUpdate::DeleteRole(obj_name.to_string()))
+                    }
+                    "targets" => {
+                        let (typestr, name) = obj_name.split_once('/').ok_or_else(|| {
+                            format!("Could not get type and name from target {obj_name}")
+                        })?;
+                        Ok(BackendUpdate::DeleteTarget(
+                            typestr.to_string(),
+                            name.to_string(),
+                        ))
+                    }
+                    _ => Err(format!("Unknown object type: {obj_type}")),
+                },
+            }
+        }
+
+        // handle a put or delete event
+        async fn handle_event(
+            event: &Event,
+            req_tx: &flume::Sender<DsRequest>,
+        ) -> Result<(), String> {
             if event.kv().is_none() {
                 // TODO -- this is a weird bug so not sure what to do. Log it?
-                return;
+                return Err("No KV in event".to_string());
             }
 
             let kv = event.kv().unwrap();
-            let key = match kv.key_str() {
-                Err(e) => {
-                    eprintln!("Invalid key: {e} {:?}", kv.key());
-                    return;
-                }
-                Ok(key) => key,
-            };
-            let val = match kv.value_str() {
-                Err(e) => {
-                    eprintln!("Invalid val: {e} {:?}", kv.value());
-                    return;
-                }
-                Ok(val) => val,
-            };
+            let key = kv.key_str().map_err(econv)?;
+            let val = kv.value_str().map_err(econv)?;
 
-            let caps = TYPE_MATCH.captures(key);
-            if caps.is_none() {
-                eprintln!("Could not determine the type from key: {key}");
-                return;
-            }
+            let caps = TYPE_MATCH
+                .captures(key)
+                .ok_or_else(|| String::from("Could not determine type/name from key"))?;
 
-            let obj_type = caps.unwrap().get(1);
-            if obj_type.is_none() {
-                eprintln!("Did not get object type from key: {key}");
-                return;
-            }
+            let obj_type = caps
+                .get(1)
+                .ok_or_else(|| format!("Did not get object type from key: {key}"))?;
+            let obj_name = caps
+                .get(2)
+                .ok_or_else(|| format!("Could not get name from key {key}"))?;
 
-            println!("OBJECT TYPE: {}", obj_type.unwrap().as_str());
+            let update = build_update(
+                &event.event_type(),
+                obj_type.as_str(),
+                obj_name.as_str(),
+                val,
+            )?;
 
-            match event.event_type() {
-                etcd_client::EventType::Put => {
-                    println!("Add: {}\n{}\n\n", key, val);
-                }
-                etcd_client::EventType::Delete => {
-                    println!("Delete: {}\n{}\n\n", key, val);
-                }
-            }
+            req_tx.send_async(DsRequest::Update(update)).await;
+
+            Ok(())
         }
 
         loop {

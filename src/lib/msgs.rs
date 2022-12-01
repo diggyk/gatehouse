@@ -20,6 +20,7 @@ use crate::proto::roles::{AddRoleRequest, GetRolesRequest, RemoveRoleRequest, Ro
 use crate::proto::targets::{
     AddTargetRequest, GetTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
 };
+use crate::storage::BackendUpdate;
 
 #[derive(Debug)]
 pub(crate) enum DsRequest {
@@ -48,6 +49,7 @@ pub(crate) enum DsRequest {
     GetPolicies(GetPoliciesRequest, Sender<DsResponse>),
 
     Check(CheckRequest, Sender<DsResponse>),
+    Update(BackendUpdate),
 }
 
 #[derive(Debug)]
