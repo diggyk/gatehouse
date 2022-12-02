@@ -215,9 +215,16 @@ pub async fn get_actors<S: Into<String>>(
 }
 
 /// Add a role
-pub async fn add_role(client: &mut GatehouseClient<Channel>, name: &str) -> Result<Role, String> {
+pub async fn add_role(
+    client: &mut GatehouseClient<Channel>,
+    name: &str,
+    desc: Option<String>,
+) -> Result<Role, String> {
     client
-        .add_role(AddRoleRequest { name: str(name) })
+        .add_role(AddRoleRequest {
+            name: str(name),
+            desc,
+        })
         .await
         .map_err(|err| format!("Failed to add role: {err}"))?
         .into_inner()

@@ -597,7 +597,7 @@ impl Datastore {
     async fn add_role(&self, req: AddRoleRequest, tx: Sender<DsResponse>) {
         let role = req.name.to_ascii_lowercase();
 
-        let new_role = RegisteredRole::new(&role);
+        let new_role = RegisteredRole::new(&role, req.desc);
 
         // if actor already exists, return an error
         if self.roles.read().await.contains_key(&role) {

@@ -59,7 +59,9 @@ async fn test_targets() {
     let mut client = create_client().await;
 
     // ensure we have no targets at the start
-    let targets = get_targets(&mut client, None, None).await.unwrap();
+    let targets = get_targets(&mut client, Option::<String>::None, None)
+        .await
+        .unwrap();
 
     assert_eq!(targets.len(), 0, "targets should have been 0");
 
@@ -94,7 +96,9 @@ async fn test_targets() {
     assert!(tgt2.attributes.contains_key("role"));
 
     // make sure all the targets are there
-    let targets = get_targets(&mut client, None, None).await.unwrap();
+    let targets = get_targets(&mut client, Option::<String>::None, None)
+        .await
+        .unwrap();
     assert_eq!(targets.len(), 5, "expected 5 targets");
 
     // filter targets by type
@@ -235,7 +239,9 @@ async fn test_actors() {
     let mut client = create_client().await;
 
     // ensure we have no actors at the start
-    let actors = get_actors(&mut client, None, None).await.unwrap();
+    let actors = get_actors(&mut client, Option::<String>::None, None)
+        .await
+        .unwrap();
 
     assert_eq!(actors.len(), 0, "actors should have been 0");
 
@@ -268,7 +274,9 @@ async fn test_actors() {
     assert!(ent2.attributes.contains_key("org"));
 
     // make sure all the actors are there
-    let actors = get_actors(&mut client, None, None).await.unwrap();
+    let actors = get_actors(&mut client, Option::<String>::None, None)
+        .await
+        .unwrap();
     assert_eq!(actors.len(), 5, "expected 5 actors");
 
     // filter actors by type
@@ -375,12 +383,12 @@ async fn test_roles() {
     let roles = get_roles(&mut client, None).await.unwrap();
     assert_eq!(roles.len(), 0, "expected 0 roles");
 
-    let role1 = add_role(&mut client, "power-admin").await.unwrap();
+    let role1 = add_role(&mut client, "power-admin", None).await.unwrap();
     assert_eq!(role1.name, "power-admin");
     assert_eq!(role1.granted_to.len(), 0);
 
-    let _ = add_role(&mut client, "launch-guard").await.unwrap();
-    let _ = add_role(&mut client, "auditer").await.unwrap();
+    let _ = add_role(&mut client, "launch-guard", None).await.unwrap();
+    let _ = add_role(&mut client, "auditer", None).await.unwrap();
 
     let roles = get_roles(&mut client, None).await.unwrap();
     assert_eq!(roles.len(), 3, "expected 3 roles");
@@ -395,10 +403,10 @@ async fn test_roles() {
 async fn test_groups() {
     let mut client = create_client().await;
 
-    let role1 = add_role(&mut client, "admin").await.unwrap();
-    let role2 = add_role(&mut client, "user").await.unwrap();
-    let role3 = add_role(&mut client, "guest").await.unwrap();
-    let role4 = add_role(&mut client, "manager").await.unwrap();
+    let role1 = add_role(&mut client, "admin", None).await.unwrap();
+    let role2 = add_role(&mut client, "user", None).await.unwrap();
+    let role3 = add_role(&mut client, "guest", None).await.unwrap();
+    let role4 = add_role(&mut client, "manager", None).await.unwrap();
     assert_eq!(role1.name, "admin");
     assert_eq!(role2.name, "user");
     assert_eq!(role3.name, "guest");
@@ -827,10 +835,18 @@ async fn load_data() {
     .await
     .unwrap();
 
-    add_role(&mut client, "admin").await.unwrap();
-    add_role(&mut client, "user").await.unwrap();
-    add_role(&mut client, "guest").await.unwrap();
-    add_role(&mut client, "manager").await.unwrap();
+    add_role(&mut client, "admin", Some(str("Global administrator")))
+        .await
+        .unwrap();
+    add_role(&mut client, "user", Some(str("Regular user")))
+        .await
+        .unwrap();
+    add_role(&mut client, "guest", Some(str("Guest role")))
+        .await
+        .unwrap();
+    add_role(&mut client, "manager", Some(str("Manager role")))
+        .await
+        .unwrap();
 
     add_group(
         &mut client,
