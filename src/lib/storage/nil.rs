@@ -63,7 +63,7 @@ impl Storage for NilStorage {
     async fn load_policies(&self) -> Result<HashMap<String, RegisteredPolicyRule>, String> {
         Ok(HashMap::new())
     }
-    async fn persist_changes(&self, updates: Vec<BackendUpdate>) -> Result<(), String> {
+    async fn persist_changes(&self, _updates: &[BackendUpdate]) -> Result<(), String> {
         Ok(())
     }
 }

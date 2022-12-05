@@ -34,7 +34,10 @@ message ModifyRoleRequest {
     optional string desc = 2;
 
     // list of groups to which this role is granted
-    repeated string granted_to = 3;
+    repeated string add_granted_to = 3;
+
+    // list of groups to which this role is granted
+    repeated string remove_granted_to = 4;
 }
 
 /** Remove role request */

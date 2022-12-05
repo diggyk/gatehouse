@@ -545,22 +545,22 @@ impl Storage for EtcdStorage {
         Ok(map)
     }
 
-    async fn persist_changes(&self, updates: Vec<BackendUpdate>) -> Result<(), String> {
+    async fn persist_changes(&self, updates: &[BackendUpdate]) -> Result<(), String> {
         for update in updates {
             match update {
-                BackendUpdate::PutActor(actor) => self.save_actor(&actor).await?,
-                BackendUpdate::PutGroup(group) => self.save_group(&group).await?,
-                BackendUpdate::PutPolicyRule(policy) => self.save_policy(&policy).await?,
-                BackendUpdate::PutRole(role) => self.save_role(&role).await?,
-                BackendUpdate::PutTarget(tgt) => self.save_target(&tgt).await?,
+                BackendUpdate::PutActor(actor) => self.save_actor(actor).await?,
+                BackendUpdate::PutGroup(group) => self.save_group(group).await?,
+                BackendUpdate::PutPolicyRule(policy) => self.save_policy(policy).await?,
+                BackendUpdate::PutRole(role) => self.save_role(role).await?,
+                BackendUpdate::PutTarget(tgt) => self.save_target(tgt).await?,
                 BackendUpdate::DeleteActor(typestr, name) => {
-                    self.remove_actor(&typestr, &name).await?
+                    self.remove_actor(typestr, name).await?
                 }
-                BackendUpdate::DeleteGroup(name) => self.remove_group(&name).await?,
-                BackendUpdate::DeletePolicyRule(name) => self.remove_policy(&name).await?,
-                BackendUpdate::DeleteRole(name) => self.remove_role(&name).await?,
+                BackendUpdate::DeleteGroup(name) => self.remove_group(name).await?,
+                BackendUpdate::DeletePolicyRule(name) => self.remove_policy(name).await?,
+                BackendUpdate::DeleteRole(name) => self.remove_role(name).await?,
                 BackendUpdate::DeleteTarget(typestr, name) => {
-                    self.remove_target(&typestr, &name).await?
+                    self.remove_target(typestr, name).await?
                 }
             }
         }

@@ -47,5 +47,5 @@ pub(crate) trait Storage {
     async fn save_policy(&self, policy: &RegisteredPolicyRule) -> Result<(), String>;
     async fn remove_policy(&self, name: &str) -> Result<(), String>;
     async fn load_policies(&self) -> Result<HashMap<String, RegisteredPolicyRule>, String>;
-    async fn persist_changes(&self, updates: Vec<BackendUpdate>) -> Result<(), String>;
+    async fn persist_changes(&self, updates: &[BackendUpdate]) -> Result<(), String>;
 }
