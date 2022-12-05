@@ -25,7 +25,9 @@ use crate::proto::groups::{
 use crate::proto::policies::{
     AddPolicyRequest, GetPoliciesRequest, ModifyPolicyRequest, PolicyRule, RemovePolicyRequest,
 };
-use crate::proto::roles::{AddRoleRequest, GetRolesRequest, RemoveRoleRequest, Role};
+use crate::proto::roles::{
+    AddRoleRequest, GetRolesRequest, ModifyRoleRequest, RemoveRoleRequest, Role,
+};
 use crate::proto::targets::{
     AddTargetRequest, GetTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
 };
@@ -357,8 +359,12 @@ impl Datastore {
         // explicitly drop targets to release lock
         drop(targets);
 
-        // try to persist the new target to the backend and if that succeeds, update it in memory
-        match self.storage.remove_target(&existing_target).await {
+        // try to remove the target from backend before persisting
+        match self
+            .storage
+            .remove_target(&existing_target.typestr, &existing_target.name)
+            .await
+        {
             Ok(_) => {
                 let mut targets = self.targets.write().await;
                 let typed_targets = targets.get_mut(&typestr).unwrap();
@@ -551,7 +557,11 @@ impl Datastore {
         drop(actors);
 
         // try to persist the new target to the backend and if that succeeds, update it in memory
-        match self.storage.remove_actor(&existing_actor).await {
+        match self
+            .storage
+            .remove_actor(&existing_actor.typestr, &existing_actor.name)
+            .await
+        {
             Ok(_) => {
                 let mut actors = self.actors.write().await;
                 let typed_actors = actors.get_mut(&typestr).unwrap();
@@ -600,7 +610,7 @@ impl Datastore {
     async fn add_role(&self, req: AddRoleRequest, tx: Sender<DsResponse>) {
         let role = req.name.to_ascii_lowercase();
 
-        let new_role = RegisteredRole::new(&role, req.desc);
+        let mut new_role = RegisteredRole::new(&role, req.desc);
 
         // if role already exists, return an error
         if self.roles.read().await.contains_key(&role) {
@@ -613,9 +623,12 @@ impl Datastore {
             return;
         }
 
+        let mut txn = Vec::new();
+
         // if the "granted_to" groups don't exist, that's an error
         // TODO -- perform this search more efficiently
         let groups = self.groups.read().await;
+        let mut modified_groups = Vec::new();
         for group_name in &req.granted_to {
             if !groups.contains_key(group_name) {
                 // TODO! -- do something with error
@@ -624,16 +637,35 @@ impl Datastore {
                 ))));
                 return;
             }
+            let mut modified_group = groups.get(group_name).unwrap().clone();
+            modified_group.roles.insert(role.clone());
+            new_role.groups.insert(group_name.to_owned());
+
+            modified_groups.push(modified_group.clone());
+            txn.push(BackendUpdate::PutGroup(modified_group));
         }
 
-        // try to persist the new role to the backend and if that succeeds, update it in memory
-        match self.storage.save_role(&new_role).await {
+        txn.push(BackendUpdate::PutRole(new_role.clone()));
+
+        // drop the lock
+        drop(groups);
+
+        // try to persist the new role and updated groups to the backend and if that succeeds, update it in memory
+        match self.storage.persist_changes(txn).await {
             Ok(_) => {
                 let _ = self
                     .roles
                     .write()
                     .await
                     .insert(role.clone(), new_role.clone());
+
+                for modified_group in modified_groups {
+                    let _ = self
+                        .groups
+                        .write()
+                        .await
+                        .insert(modified_group.name.clone(), modified_group);
+                }
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -644,6 +676,8 @@ impl Datastore {
 
         let _ = tx.send(DsResponse::SingleRole(new_role.into()));
     }
+
+    async fn modify_role(&self, req: ModifyRoleRequest, tx: Sender<DsResponse>) {}
 
     /// Remove a role
     async fn remove_role(&self, req: RemoveRoleRequest, tx: Sender<DsResponse>) {

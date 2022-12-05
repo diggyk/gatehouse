@@ -383,12 +383,18 @@ async fn test_roles() {
     let roles = get_roles(&mut client, None).await.unwrap();
     assert_eq!(roles.len(), 0, "expected 0 roles");
 
-    let role1 = add_role(&mut client, "power-admin", None).await.unwrap();
+    let role1 = add_role(&mut client, "power-admin", None, vec![])
+        .await
+        .unwrap();
     assert_eq!(role1.name, "power-admin");
     assert_eq!(role1.granted_to.len(), 0);
 
-    let _ = add_role(&mut client, "launch-guard", None).await.unwrap();
-    let _ = add_role(&mut client, "auditer", None).await.unwrap();
+    let _ = add_role(&mut client, "launch-guard", None, vec![])
+        .await
+        .unwrap();
+    let _ = add_role(&mut client, "auditer", None, vec![])
+        .await
+        .unwrap();
 
     let roles = get_roles(&mut client, None).await.unwrap();
     assert_eq!(roles.len(), 3, "expected 3 roles");
@@ -403,10 +409,12 @@ async fn test_roles() {
 async fn test_groups() {
     let mut client = create_client().await;
 
-    let role1 = add_role(&mut client, "admin", None).await.unwrap();
-    let role2 = add_role(&mut client, "user", None).await.unwrap();
-    let role3 = add_role(&mut client, "guest", None).await.unwrap();
-    let role4 = add_role(&mut client, "manager", None).await.unwrap();
+    let role1 = add_role(&mut client, "admin", None, vec![]).await.unwrap();
+    let role2 = add_role(&mut client, "user", None, vec![]).await.unwrap();
+    let role3 = add_role(&mut client, "guest", None, vec![]).await.unwrap();
+    let role4 = add_role(&mut client, "manager", None, vec![])
+        .await
+        .unwrap();
     assert_eq!(role1.name, "admin");
     assert_eq!(role2.name, "user");
     assert_eq!(role3.name, "guest");
@@ -835,31 +843,47 @@ async fn load_data() {
     .await
     .unwrap();
 
-    add_role(&mut client, "admin", Some(str("Global administrator")))
+    add_role(
+        &mut client,
+        "admin",
+        Some(str("Global administrator")),
+        vec![],
+    )
+    .await
+    .unwrap();
+    add_role(&mut client, "user", Some(str("Regular user")), vec![])
         .await
         .unwrap();
-    add_role(&mut client, "user", Some(str("Regular user")))
+    add_role(&mut client, "guest", Some(str("Guest role")), vec![])
         .await
         .unwrap();
-    add_role(&mut client, "guest", Some(str("Guest role")))
-        .await
-        .unwrap();
-    add_role(&mut client, "manager", Some(str("Manager role")))
-        .await
-        .unwrap();
-    add_role(&mut client, "launchmaster", Some(str("Launch pad access")))
+    add_role(&mut client, "manager", Some(str("Manager role")), vec![])
         .await
         .unwrap();
     add_role(
         &mut client,
-        "loadmaster",
-        Some(str("Cargo loading access and storage room access")),
+        "launchmaster",
+        Some(str("Launch pad access")),
+        vec![],
     )
     .await
     .unwrap();
-    add_role(&mut client, "flightctl", Some(str("Flight control access")))
-        .await
-        .unwrap();
+    add_role(
+        &mut client,
+        "loadmaster",
+        Some(str("Cargo loading access and storage room access")),
+        vec![],
+    )
+    .await
+    .unwrap();
+    add_role(
+        &mut client,
+        "flightctl",
+        Some(str("Flight control access")),
+        vec![],
+    )
+    .await
+    .unwrap();
 
     add_group(
         &mut client,

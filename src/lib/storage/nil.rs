@@ -8,7 +8,7 @@ use crate::policy::RegisteredPolicyRule;
 use crate::role::RegisteredRole;
 use crate::target::RegisteredTarget;
 
-use super::Storage;
+use super::{BackendUpdate, Storage};
 
 pub(crate) struct NilStorage;
 
@@ -17,7 +17,7 @@ impl Storage for NilStorage {
     async fn save_target(&self, _tgt: &RegisteredTarget) -> Result<(), String> {
         Ok(())
     }
-    async fn remove_target(&self, _tgt: &RegisteredTarget) -> Result<(), String> {
+    async fn remove_target(&self, _typestr: &str, _name: &str) -> Result<(), String> {
         Ok(())
     }
     async fn load_targets(
@@ -28,7 +28,7 @@ impl Storage for NilStorage {
     async fn save_actor(&self, _tgt: &RegisteredActor) -> Result<(), String> {
         Ok(())
     }
-    async fn remove_actor(&self, _tgt: &RegisteredActor) -> Result<(), String> {
+    async fn remove_actor(&self, _typestr: &str, _name: &str) -> Result<(), String> {
         Ok(())
     }
     async fn load_actors(
@@ -62,5 +62,8 @@ impl Storage for NilStorage {
     }
     async fn load_policies(&self) -> Result<HashMap<String, RegisteredPolicyRule>, String> {
         Ok(HashMap::new())
+    }
+    async fn persist_changes(&self, updates: Vec<BackendUpdate>) -> Result<(), String> {
+        Ok(())
     }
 }

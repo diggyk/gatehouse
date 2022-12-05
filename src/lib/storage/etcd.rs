@@ -333,8 +333,8 @@ impl Storage for EtcdStorage {
         Ok(())
     }
 
-    async fn remove_target(&self, tgt: &RegisteredTarget) -> Result<(), String> {
-        let target_path = format!("{}/targets/{}/{}", self.basepath, tgt.typestr, tgt.name);
+    async fn remove_target(&self, typestr: &str, name: &str) -> Result<(), String> {
+        let target_path = format!("{}/targets/{}/{}", self.basepath, typestr, name);
 
         self.client
             .kv_client()
@@ -380,8 +380,8 @@ impl Storage for EtcdStorage {
             .map_err(econv)?;
         Ok(())
     }
-    async fn remove_actor(&self, tgt: &RegisteredActor) -> Result<(), String> {
-        let actor_path = format!("{}/actors/{}/{}", self.basepath, tgt.typestr, tgt.name);
+    async fn remove_actor(&self, typestr: &str, name: &str) -> Result<(), String> {
+        let actor_path = format!("{}/actors/{}/{}", self.basepath, typestr, name);
 
         self.client
             .kv_client()
@@ -543,5 +543,28 @@ impl Storage for EtcdStorage {
         }
 
         Ok(map)
+    }
+
+    async fn persist_changes(&self, updates: Vec<BackendUpdate>) -> Result<(), String> {
+        for update in updates {
+            match update {
+                BackendUpdate::PutActor(actor) => self.save_actor(&actor).await?,
+                BackendUpdate::PutGroup(group) => self.save_group(&group).await?,
+                BackendUpdate::PutPolicyRule(policy) => self.save_policy(&policy).await?,
+                BackendUpdate::PutRole(role) => self.save_role(&role).await?,
+                BackendUpdate::PutTarget(tgt) => self.save_target(&tgt).await?,
+                BackendUpdate::DeleteActor(typestr, name) => {
+                    self.remove_actor(&typestr, &name).await?
+                }
+                BackendUpdate::DeleteGroup(name) => self.remove_group(&name).await?,
+                BackendUpdate::DeletePolicyRule(name) => self.remove_policy(&name).await?,
+                BackendUpdate::DeleteRole(name) => self.remove_role(&name).await?,
+                BackendUpdate::DeleteTarget(typestr, name) => {
+                    self.remove_target(&typestr, &name).await?
+                }
+            }
+        }
+
+        Ok(())
     }
 }
