@@ -847,6 +847,19 @@ async fn load_data() {
     add_role(&mut client, "manager", Some(str("Manager role")))
         .await
         .unwrap();
+    add_role(&mut client, "launchmaster", Some(str("Launch pad access")))
+        .await
+        .unwrap();
+    add_role(
+        &mut client,
+        "loadmaster",
+        Some(str("Cargo loading access and storage room access")),
+    )
+    .await
+    .unwrap();
+    add_role(&mut client, "flightctl", Some(str("Flight control access")))
+        .await
+        .unwrap();
 
     add_group(
         &mut client,
@@ -873,6 +886,26 @@ async fn load_data() {
             ("marie", "user"),
         ],
         vec!["user", "guest"],
+    )
+    .await
+    .unwrap();
+
+    add_group(
+        &mut client,
+        "launchteam",
+        Some("Launch control team"),
+        vec![],
+        vec!["launchmaster"],
+    )
+    .await
+    .unwrap();
+
+    add_group(
+        &mut client,
+        "loadteam",
+        Some("Cargo loading and ramp team"),
+        vec![],
+        vec!["loadmaster"],
     )
     .await
     .unwrap();

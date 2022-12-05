@@ -21,6 +21,20 @@ message AddRoleRequest {
     // optional human description
     optional string desc = 2;
 
+    // list of groups to which this role is granted
+    repeated string granted_to = 3;
+}
+
+/** Modify role request */
+message ModifyRoleRequest {
+    // role name to add
+    string name = 1;
+
+    // optional human description
+    optional string desc = 2;
+
+    // list of groups to which this role is granted
+    repeated string granted_to = 3;
 }
 
 /** Remove role request */

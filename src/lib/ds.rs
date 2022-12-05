@@ -152,6 +152,9 @@ impl Datastore {
                 DsRequest::AddRole(req, tx) => {
                     tokio::spawn(async move { me.add_role(req, tx).await });
                 }
+                DsRequest::ModifyRole(req, tx) => {
+                    tokio::spawn(async move { me.modify_role(req, tx).await });
+                }
                 DsRequest::RemoveRole(req, tx) => {
                     tokio::spawn(async move { me.remove_role(req, tx).await });
                 }
@@ -599,7 +602,7 @@ impl Datastore {
 
         let new_role = RegisteredRole::new(&role, req.desc);
 
-        // if actor already exists, return an error
+        // if role already exists, return an error
         if self.roles.read().await.contains_key(&role) {
             println!("Role already exists: {}", role);
 
@@ -608,6 +611,19 @@ impl Datastore {
                 "Role already exists",
             )));
             return;
+        }
+
+        // if the "granted_to" groups don't exist, that's an error
+        // TODO -- perform this search more efficiently
+        let groups = self.groups.read().await;
+        for group_name in &req.granted_to {
+            if !groups.contains_key(group_name) {
+                // TODO! -- do something with error
+                let _ = tx.send(DsResponse::Error(Status::not_found(format!(
+                    "Group {group_name} not found"
+                ))));
+                return;
+            }
         }
 
         // try to persist the new role to the backend and if that succeeds, update it in memory

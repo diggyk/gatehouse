@@ -219,11 +219,13 @@ pub async fn add_role(
     client: &mut GatehouseClient<Channel>,
     name: &str,
     desc: Option<String>,
+    groups: Vec<String>,
 ) -> Result<Role, String> {
     client
         .add_role(AddRoleRequest {
             name: str(name),
             desc,
+            granted_to: groups,
         })
         .await
         .map_err(|err| format!("Failed to add role: {err}"))?

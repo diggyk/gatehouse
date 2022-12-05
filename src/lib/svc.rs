@@ -22,7 +22,8 @@ use crate::proto::policies::{
     RemovePolicyRequest,
 };
 use crate::proto::roles::{
-    AddRoleRequest, GetRolesRequest, MultiRoleResponse, RemoveRoleRequest, RoleResponse,
+    AddRoleRequest, GetRolesRequest, ModifyRoleRequest, MultiRoleResponse, RemoveRoleRequest,
+    RoleResponse,
 };
 use crate::proto::targets::{
     AddTargetRequest, GetTargetsRequest, ModifyTargetRequest, MultiTargetResponse,
@@ -281,6 +282,28 @@ impl Gatehouse for GatehouseSvc {
             DsResponse::SingleRole(role) => {
                 //TODO! -- add metrics
                 println!("Added role {}", role);
+                return Ok(Response::new(RoleResponse { role: Some(role) }));
+            }
+            DsResponse::Error(status) => return Err(status),
+            _ => return Err(Status::internal("Got unexpected answer from datastore")),
+        }
+    }
+
+    /// Modify a role
+    async fn modify_role(
+        &self,
+        request: Request<ModifyRoleRequest>,
+    ) -> Result<Response<RoleResponse>, Status> {
+        let req = request.into_inner();
+        let (tx, rx) = channel::<DsResponse>();
+
+        match self
+            .call_datastore(DsRequest::ModifyRole(req.clone(), tx), "modify role", rx)
+            .await?
+        {
+            DsResponse::SingleRole(role) => {
+                //TODO! -- add metrics
+                println!("Modified role {}", role);
                 return Ok(Response::new(RoleResponse { role: Some(role) }));
             }
             DsResponse::Error(status) => return Err(status),
