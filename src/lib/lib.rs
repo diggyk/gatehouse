@@ -32,7 +32,7 @@ pub mod proto {
                     .collect::<Vec<String>>()
                     .join(" ");
 
-                write!(f, "ent[{}/{}]: {}", self.typestr, self.name, attribvals)
+                write!(f, "actor[{}/{}]: {}", self.typestr, self.name, attribvals)
             }
         }
     }
@@ -93,13 +93,13 @@ pub mod proto {
                 let attribvals = self
                     .attributes
                     .iter()
-                    .map(|kv| format!(" {}: {}", kv.0, kv.1.values.join(", ")))
+                    .map(|kv| format!("{}: {}", kv.0, kv.1.values.join(", ")))
                     .collect::<Vec<String>>()
-                    .join(" ");
+                    .join("; ");
 
                 write!(
                     f,
-                    "tgt[{}/{}]: {} // {}",
+                    "tgt[{}/{}]: actions:: {} // attribs:: {}",
                     self.typestr,
                     self.name,
                     self.actions

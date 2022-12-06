@@ -116,13 +116,13 @@ pub async fn remove_target(
 }
 
 /// Get all targets
-pub async fn get_targets(
+pub async fn get_targets<S: Into<String>>(
     client: &mut GatehouseClient<Channel>,
-    name: Option<&str>,
-    typestr: Option<&str>,
+    name: Option<S>,
+    typestr: Option<S>,
 ) -> Result<Vec<Target>, String> {
-    let name = name.map(str);
-    let typestr = typestr.map(str);
+    let name = name.map(|str| str.into());
+    let typestr = typestr.map(|str| str.into());
 
     Ok(client
         .get_targets(GetTargetsRequest { name, typestr })
@@ -198,13 +198,13 @@ pub async fn remove_actor(
 }
 
 /// Get all actors
-pub async fn get_actors(
+pub async fn get_actors<S: Into<String>>(
     client: &mut GatehouseClient<Channel>,
-    name: Option<&str>,
-    typestr: Option<&str>,
+    name: Option<S>,
+    typestr: Option<S>,
 ) -> Result<Vec<Actor>, String> {
-    let name = name.map(str);
-    let typestr = typestr.map(str);
+    let name = name.map(|s| s.into());
+    let typestr = typestr.map(|s| s.into());
 
     Ok(client
         .get_actors(GetActorsRequest { name, typestr })
@@ -215,9 +215,18 @@ pub async fn get_actors(
 }
 
 /// Add a role
-pub async fn add_role(client: &mut GatehouseClient<Channel>, name: &str) -> Result<Role, String> {
+pub async fn add_role(
+    client: &mut GatehouseClient<Channel>,
+    name: &str,
+    desc: Option<String>,
+    groups: Vec<String>,
+) -> Result<Role, String> {
     client
-        .add_role(AddRoleRequest { name: str(name) })
+        .add_role(AddRoleRequest {
+            name: str(name),
+            desc,
+            granted_to: groups,
+        })
         .await
         .map_err(|err| format!("Failed to add role: {err}"))?
         .into_inner()

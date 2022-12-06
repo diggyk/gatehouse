@@ -16,7 +16,9 @@ use crate::proto::policies::{
     AddPolicyRequest, Decide, GetPoliciesRequest, ModifyPolicyRequest, PolicyRule,
     RemovePolicyRequest,
 };
-use crate::proto::roles::{AddRoleRequest, GetRolesRequest, RemoveRoleRequest, Role};
+use crate::proto::roles::{
+    AddRoleRequest, GetRolesRequest, ModifyRoleRequest, RemoveRoleRequest, Role,
+};
 use crate::proto::targets::{
     AddTargetRequest, GetTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
 };
@@ -35,6 +37,7 @@ pub(crate) enum DsRequest {
     GetActors(GetActorsRequest, Sender<DsResponse>),
 
     AddRole(AddRoleRequest, Sender<DsResponse>),
+    ModifyRole(ModifyRoleRequest, Sender<DsResponse>),
     RemoveRole(RemoveRoleRequest, Sender<DsResponse>),
     GetRoles(GetRolesRequest, Sender<DsResponse>),
 

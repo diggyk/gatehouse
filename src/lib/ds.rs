@@ -25,7 +25,9 @@ use crate::proto::groups::{
 use crate::proto::policies::{
     AddPolicyRequest, GetPoliciesRequest, ModifyPolicyRequest, PolicyRule, RemovePolicyRequest,
 };
-use crate::proto::roles::{AddRoleRequest, GetRolesRequest, RemoveRoleRequest, Role};
+use crate::proto::roles::{
+    AddRoleRequest, GetRolesRequest, ModifyRoleRequest, RemoveRoleRequest, Role,
+};
 use crate::proto::targets::{
     AddTargetRequest, GetTargetsRequest, ModifyTargetRequest, RemoveTargetRequest, Target,
 };
@@ -152,6 +154,9 @@ impl Datastore {
                 DsRequest::AddRole(req, tx) => {
                     tokio::spawn(async move { me.add_role(req, tx).await });
                 }
+                DsRequest::ModifyRole(req, tx) => {
+                    tokio::spawn(async move { me.modify_role(req, tx).await });
+                }
                 DsRequest::RemoveRole(req, tx) => {
                     tokio::spawn(async move { me.remove_role(req, tx).await });
                 }
@@ -230,9 +235,8 @@ impl Datastore {
 
         match self.storage.save_target(&new_target).await {
             Ok(_) => {
-                let mut targets = self.targets.write().await;
-                let typed_targets = targets.get_mut(&typestr).unwrap();
-                typed_targets.insert(name, new_target.clone());
+                self.update(BackendUpdate::PutTarget(new_target.clone()))
+                    .await;
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -308,9 +312,8 @@ impl Datastore {
 
         match self.storage.save_target(&updated_target).await {
             Ok(_) => {
-                let mut targets = self.targets.write().await;
-                let typed_targets = targets.get_mut(&typestr).unwrap();
-                let _ = typed_targets.insert(name.clone(), updated_target.clone());
+                self.update(BackendUpdate::PutTarget(updated_target.clone()))
+                    .await;
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -354,12 +357,18 @@ impl Datastore {
         // explicitly drop targets to release lock
         drop(targets);
 
-        // try to persist the new target to the backend and if that succeeds, update it in memory
-        match self.storage.remove_target(&existing_target).await {
+        // try to remove the target from backend before persisting
+        match self
+            .storage
+            .remove_target(&existing_target.typestr, &existing_target.name)
+            .await
+        {
             Ok(_) => {
-                let mut targets = self.targets.write().await;
-                let typed_targets = targets.get_mut(&typestr).unwrap();
-                let _ = typed_targets.remove(&name);
+                self.update(BackendUpdate::DeleteTarget(
+                    existing_target.typestr.clone(),
+                    existing_target.name.clone(),
+                ))
+                .await
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -430,9 +439,8 @@ impl Datastore {
 
         match self.storage.save_actor(&new_actor).await {
             Ok(_) => {
-                let mut actors = self.actors.write().await;
-                let typed_actors = actors.get_mut(&typestr).unwrap();
-                typed_actors.insert(name, new_actor.clone());
+                self.update(BackendUpdate::PutActor(new_actor.clone()))
+                    .await
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -500,9 +508,8 @@ impl Datastore {
 
         match self.storage.save_actor(&updated_actor).await {
             Ok(_) => {
-                let mut actors = self.actors.write().await;
-                let typed_actors = actors.get_mut(&typestr).unwrap();
-                let _ = typed_actors.insert(name.clone(), updated_actor.clone());
+                self.update(BackendUpdate::PutActor(updated_actor.clone()))
+                    .await;
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -548,11 +555,17 @@ impl Datastore {
         drop(actors);
 
         // try to persist the new target to the backend and if that succeeds, update it in memory
-        match self.storage.remove_actor(&existing_actor).await {
+        match self
+            .storage
+            .remove_actor(&existing_actor.typestr, &existing_actor.name)
+            .await
+        {
             Ok(_) => {
-                let mut actors = self.actors.write().await;
-                let typed_actors = actors.get_mut(&typestr).unwrap();
-                let _ = typed_actors.remove(&name);
+                self.update(BackendUpdate::DeleteActor(
+                    existing_actor.typestr.clone(),
+                    existing_actor.name.clone(),
+                ))
+                .await
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -597,9 +610,9 @@ impl Datastore {
     async fn add_role(&self, req: AddRoleRequest, tx: Sender<DsResponse>) {
         let role = req.name.to_ascii_lowercase();
 
-        let new_role = RegisteredRole::new(&role);
+        let mut new_role = RegisteredRole::new(&role, req.desc);
 
-        // if actor already exists, return an error
+        // if role already exists, return an error
         if self.roles.read().await.contains_key(&role) {
             println!("Role already exists: {}", role);
 
@@ -610,14 +623,39 @@ impl Datastore {
             return;
         }
 
-        // try to persist the new role to the backend and if that succeeds, update it in memory
-        match self.storage.save_role(&new_role).await {
+        let mut txn = Vec::new();
+
+        // if the "granted_to" groups don't exist, that's an error
+        // TODO -- perform this search more efficiently
+        let groups = self.groups.read().await;
+        let mut modified_groups = Vec::new();
+        for group_name in &req.granted_to {
+            if !groups.contains_key(group_name) {
+                // TODO! -- do something with error
+                let _ = tx.send(DsResponse::Error(Status::not_found(format!(
+                    "Group {group_name} not found"
+                ))));
+                return;
+            }
+            let mut modified_group = groups.get(group_name).unwrap().clone();
+            modified_group.roles.insert(role.clone());
+            new_role.groups.insert(group_name.to_owned());
+
+            modified_groups.push(modified_group.clone());
+            txn.push(BackendUpdate::PutGroup(modified_group));
+        }
+
+        txn.push(BackendUpdate::PutRole(new_role.clone()));
+
+        // drop the lock
+        drop(groups);
+
+        // try to persist the new role and updated groups to the backend and if that succeeds, update it in memory
+        match self.storage.persist_changes(&txn).await {
             Ok(_) => {
-                let _ = self
-                    .roles
-                    .write()
-                    .await
-                    .insert(role.clone(), new_role.clone());
+                for update in txn {
+                    self.update(update).await;
+                }
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -627,6 +665,76 @@ impl Datastore {
         }
 
         let _ = tx.send(DsResponse::SingleRole(new_role.into()));
+    }
+
+    async fn modify_role(&self, req: ModifyRoleRequest, tx: Sender<DsResponse>) {
+        let role = req.name.to_ascii_lowercase();
+
+        // verify the role exists
+        let mut existing_role = match self.roles.read().await.get(&role) {
+            Some(role) => role.clone(),
+            None => {
+                // TODO! -- do something with the error
+                let _ = tx.send(DsResponse::Error(Status::not_found(
+                    "Role {role} not found",
+                )));
+                return;
+            }
+        };
+
+        let mut txn = Vec::new();
+
+        // verify the groups we want to add exist and create updated versions of them
+        for add_group in &req.add_granted_to {
+            let mut updated_group = match self.groups.read().await.get(add_group) {
+                None => {
+                    let _ = tx.send(DsResponse::Error(Status::not_found(
+                        "Group {add_group} not fund",
+                    )));
+                    return;
+                }
+                Some(group) => group.clone(),
+            };
+            updated_group.roles.insert(role.clone());
+            txn.push(BackendUpdate::PutGroup(updated_group));
+
+            existing_role.groups.insert(add_group.clone());
+        }
+
+        // verify the groups we want to remove exist and create updated version of them
+        for remove_group in &req.remove_granted_to {
+            let mut updated_group = match self.groups.read().await.get(remove_group) {
+                None => {
+                    let _ = tx.send(DsResponse::Error(Status::not_found(
+                        "Group {add_group} not fund",
+                    )));
+                    return;
+                }
+                Some(group) => group.clone(),
+            };
+            updated_group.roles.remove(&role);
+            txn.push(BackendUpdate::PutGroup(updated_group));
+
+            existing_role.groups.remove(remove_group);
+        }
+
+        txn.push(BackendUpdate::PutRole(existing_role.clone()));
+
+        // try to persist the new role and updated groups to the backend and if that succeeds, update it in memory
+        match self.storage.persist_changes(&txn).await {
+            Ok(_) => {
+                for update in txn {
+                    self.update(update).await;
+                }
+            }
+            Err(err) => {
+                // TODO! -- do something with error
+                let _ = tx.send(DsResponse::Error(Status::internal(err)));
+                return;
+            }
+        }
+
+        let _ = tx.send(DsResponse::SingleRole(existing_role.into()));
     }
 
     /// Remove a role
@@ -643,41 +751,30 @@ impl Datastore {
 
         let existing_role = self.roles.read().await.get(&role).unwrap().to_owned();
 
-        let mut updated_groups = Vec::new();
+        let mut txn = Vec::new();
+
         for group_name in &existing_role.groups {
             if let Some(grp) = self.groups.read().await.get(group_name) {
                 let mut cloned_grp = grp.clone();
                 cloned_grp.roles.remove(&role);
-                updated_groups.push(cloned_grp);
+                txn.push(BackendUpdate::PutGroup(cloned_grp));
             }
         }
 
-        // try to remove the new role from the backend and if that succeeds, update it in memory
-        match self.storage.remove_role(&existing_role.name).await {
+        txn.push(BackendUpdate::DeleteRole(role));
+
+        // persist and run updates locally
+        match self.storage.persist_changes(&txn).await {
             Ok(_) => {
-                let _ = self.roles.write().await.remove(&role);
+                for update in txn {
+                    self.update(update).await;
+                }
             }
             Err(err) => {
                 // TODO! -- do something with error
                 let _ = tx.send(DsResponse::Error(Status::internal(err)));
                 return;
             }
-        }
-
-        // persist the updated groups
-        for updated_group in updated_groups {
-            if let Err(err) = self.storage.save_group(&updated_group).await {
-                // TODO! -- do something with error
-                eprintln!(
-                    "Persistence issue! Group {} could not be saved after removing role {}: {}",
-                    updated_group.name, &role, err
-                );
-            }
-
-            self.groups
-                .write()
-                .await
-                .insert(updated_group.name.clone(), updated_group);
         }
 
         let _ = tx.send(DsResponse::SingleRole(existing_role.into()));
@@ -706,13 +803,13 @@ impl Datastore {
     async fn add_group(&self, req: AddGroupRequest, tx: Sender<DsResponse>) {
         let name = req.name.to_ascii_lowercase();
 
-        // if actor already exists, return an error
+        // if group already exists, return an error
         if self.groups.read().await.contains_key(&name) {
             println!("Group already exists: {}", name);
 
             // TODO! -- do something with error
             let _ = tx.send(DsResponse::Error(Status::already_exists(
-                "Role already exists",
+                "Group already exists",
             )));
             return;
         }
@@ -721,9 +818,9 @@ impl Datastore {
             req.members.iter().map(|m| m.clone().into()).collect();
 
         let mut roles = HashSet::new();
+        let mut txn = Vec::new();
 
         // find the existing roles we can update their references to groups
-        let mut found_roles = Vec::new();
         for role_req in req.roles {
             let role_req_name = role_req.to_ascii_lowercase();
             let known_roles = self.roles.read().await;
@@ -739,36 +836,28 @@ impl Datastore {
             // make a clone of the role and add a reference to this group
             let mut cloned_role = found_role.unwrap().clone();
             cloned_role.groups.insert(name.clone().clone());
-            found_roles.push(cloned_role);
-
             // add this role to the list of roles associated with this group
             roles.insert(role_req_name);
+
+            // add an update to store this updated role
+            txn.push(BackendUpdate::PutRole(cloned_role));
         }
 
         let new_group = RegisteredGroup::new(&name, req.desc, members, roles);
+        txn.push(BackendUpdate::PutGroup(new_group.clone()));
 
-        // try to save the group first and then if that works, update the roles and persist them
-        if let Err(err) = self.storage.save_group(&new_group).await {
-            // TODO! -- do something with error
-            let _ = tx.send(DsResponse::Error(Status::internal(err)));
-            return;
-        }
-
-        self.groups
-            .write()
-            .await
-            .insert(name.clone(), new_group.clone());
-
-        for found_role in found_roles {
-            // if this fails, we have a referential integrity problem
-            if let Err(err) = self.storage.save_role(&found_role).await {
-                // TODO! -- really alert on this error
-                eprintln!("Referential integrity issue: role {} could not be saved after adding to group {}: {}", found_role.name, &name, err);
+        // persist and run updates locally
+        match self.storage.persist_changes(&txn).await {
+            Ok(_) => {
+                for update in txn {
+                    self.update(update).await;
+                }
             }
-            self.roles
-                .write()
-                .await
-                .insert(found_role.name.clone(), found_role);
+            Err(err) => {
+                // TODO! -- do something with error
+                let _ = tx.send(DsResponse::Error(Status::internal(err)));
+                return;
+            }
         }
 
         let _ = tx.send(DsResponse::SingleGroup(new_group.into()));
@@ -798,8 +887,9 @@ impl Datastore {
             updated_group.members.remove(&member.into());
         }
 
+        let mut txn = Vec::new();
+
         // find existing roles that are being added to this group
-        let mut found_roles = Vec::new();
         for role_req in req.add_roles {
             let role_req_name = role_req.to_ascii_lowercase();
             let known_roles = self.roles.read().await;
@@ -815,7 +905,8 @@ impl Datastore {
             // make a clone of the role and add a reference to this group
             let mut cloned_role = found_role.unwrap().clone();
             cloned_role.groups.insert(name.clone());
-            found_roles.push(cloned_role);
+
+            txn.push(BackendUpdate::PutRole(cloned_role));
 
             // add this role to the list of roles associated with this group
             updated_group.roles.insert(role_req_name);
@@ -837,34 +928,27 @@ impl Datastore {
             // make a clone of the role and remove the reference to this group
             let mut cloned_role = found_role.unwrap().clone();
             cloned_role.groups.remove(&name.clone());
-            found_roles.push(cloned_role);
+
+            txn.push(BackendUpdate::PutRole(cloned_role));
 
             // remove this role to the list of roles associated with this group
             updated_group.roles.remove(&role_req_name);
         }
 
-        // try to save the group first and then if that works, update the roles and persist them
-        if let Err(err) = self.storage.save_group(&updated_group).await {
-            // TODO! -- do something with error
-            let _ = tx.send(DsResponse::Error(Status::internal(err)));
-            return;
-        }
+        txn.push(BackendUpdate::PutGroup(updated_group.clone()));
 
-        self.groups
-            .write()
-            .await
-            .insert(name.clone(), updated_group.clone());
-
-        for found_role in found_roles {
-            // if this fails, we have a referential integrity problem
-            if let Err(err) = self.storage.save_role(&found_role).await {
-                // TODO! -- really alert on this error
-                eprintln!("Referential integrity issue: role {} could not be saved after adding to group {}: {}", found_role.name, &name, err);
+        // persist and run updates locally
+        match self.storage.persist_changes(&txn).await {
+            Ok(_) => {
+                for update in txn {
+                    self.update(update).await;
+                }
             }
-            self.roles
-                .write()
-                .await
-                .insert(found_role.name.clone(), found_role);
+            Err(err) => {
+                // TODO! -- do something with error
+                let _ = tx.send(DsResponse::Error(Status::internal(err)));
+                return;
+            }
         }
 
         let _ = tx.send(DsResponse::SingleGroup(updated_group.into()));
@@ -884,9 +968,9 @@ impl Datastore {
 
         let existing_group = self.groups.read().await.get(&name).unwrap().clone();
 
+        let mut txn = Vec::new();
+
         // find existing roles that have been granted to this group
-        let mut found_roles = Vec::new();
-        // find existing roles that are being removed from this group
         for role_name in existing_group.roles.iter() {
             let known_roles = self.roles.read().await;
             let found_role = known_roles.get(role_name);
@@ -901,27 +985,21 @@ impl Datastore {
             // make a clone of the role and remove the reference to this group
             let mut cloned_role = found_role.unwrap().clone();
             cloned_role.groups.remove(&name.clone());
-            found_roles.push(cloned_role);
+            txn.push(BackendUpdate::PutRole(cloned_role));
         }
 
-        // try to delete the group first and then if that works, update the roles and persist them
-        if let Err(err) = self.storage.remove_group(&existing_group.name).await {
-            // TODO! -- do something with error
-            let _ = tx.send(DsResponse::Error(Status::internal(err)));
-            return;
-        }
-
-        // update the roles so they are no longer pointing to this deleted group
-        for found_role in found_roles {
-            // if this fails, we have a referential integrity problem
-            if let Err(err) = self.storage.save_role(&found_role).await {
-                // TODO! -- really alert on this error
-                eprintln!("Referential integrity issue: role {} could not be saved after adding to group {}: {}", found_role.name, &name, err);
+        // persist and run updates locally
+        match self.storage.persist_changes(&txn).await {
+            Ok(_) => {
+                for update in txn {
+                    self.update(update).await;
+                }
             }
-            self.roles
-                .write()
-                .await
-                .insert(found_role.name.clone(), found_role);
+            Err(err) => {
+                // TODO! -- do something with error
+                let _ = tx.send(DsResponse::Error(Status::internal(err)));
+                return;
+            }
         }
 
         let _ = tx.send(DsResponse::SingleGroup(existing_group.into()));
@@ -991,11 +1069,8 @@ impl Datastore {
         // try to persist the new policy to the backend and if that succeeds, update it in memory
         match self.storage.save_policy(&new_policy).await {
             Ok(_) => {
-                let _ = self
-                    .policies
-                    .write()
-                    .await
-                    .insert(name.clone(), new_policy.clone());
+                self.update(BackendUpdate::PutPolicyRule(new_policy.clone()))
+                    .await;
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -1037,11 +1112,8 @@ impl Datastore {
         // try to persist the new policy to the backend and if that succeeds, update it in memory
         match self.storage.save_policy(&updated_policy).await {
             Ok(_) => {
-                let _ = self
-                    .policies
-                    .write()
-                    .await
-                    .insert(name.clone(), updated_policy.clone());
+                self.update(BackendUpdate::PutPolicyRule(updated_policy.clone()))
+                    .await;
             }
             Err(err) => {
                 // TODO! -- do something with error
@@ -1073,7 +1145,8 @@ impl Datastore {
         // try to remove the policy from backend before updating memory
         match self.storage.remove_policy(&name).await {
             Ok(_) => {
-                let _ = self.policies.write().await.remove(&name);
+                self.update(BackendUpdate::DeletePolicyRule(name.clone()))
+                    .await;
             }
             Err(err) => {
                 // TODO! -- do something with error

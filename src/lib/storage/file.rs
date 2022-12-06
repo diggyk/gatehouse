@@ -8,7 +8,7 @@ use crate::policy::RegisteredPolicyRule;
 use crate::role::RegisteredRole;
 use crate::target::RegisteredTarget;
 
-use super::Storage;
+use super::{BackendUpdate, Storage};
 
 pub(crate) struct FileStorage {
     basepath: String,
@@ -59,11 +59,8 @@ impl Storage for FileStorage {
         Ok(())
     }
 
-    async fn remove_target(&self, tgt: &RegisteredTarget) -> Result<(), String> {
-        let target_path = format!(
-            "{}/targets/{}-{}.json",
-            self.basepath, tgt.typestr, tgt.name
-        );
+    async fn remove_target(&self, typestr: &str, name: &str) -> Result<(), String> {
+        let target_path = format!("{}/targets/{}-{}.json", self.basepath, typestr, name);
 
         tokio::fs::remove_file(target_path)
             .await
@@ -102,22 +99,25 @@ impl Storage for FileStorage {
         Ok(targets)
     }
 
-    async fn save_actor(&self, tgt: &RegisteredActor) -> Result<(), String> {
-        let target_path = format!("{}/actors/{}-{}.json", self.basepath, tgt.typestr, tgt.name);
+    async fn save_actor(&self, actor: &RegisteredActor) -> Result<(), String> {
+        let actors_path = format!(
+            "{}/actors/{}-{}.json",
+            self.basepath, actor.typestr, actor.name
+        );
 
-        let json = serde_json::to_string(&tgt).map_err(|err| err.to_string())?;
+        let json = serde_json::to_string(&actor).map_err(|err| err.to_string())?;
 
-        tokio::fs::write(target_path, json)
+        tokio::fs::write(actors_path, json)
             .await
             .map_err(|err| err.to_string())?;
 
         Ok(())
     }
 
-    async fn remove_actor(&self, tgt: &RegisteredActor) -> Result<(), String> {
-        let target_path = format!("{}/actors/{}-{}.json", self.basepath, tgt.typestr, tgt.name);
+    async fn remove_actor(&self, typestr: &str, name: &str) -> Result<(), String> {
+        let actors_path = format!("{}/actors/{}-{}.json", self.basepath, typestr, name);
 
-        tokio::fs::remove_file(target_path)
+        tokio::fs::remove_file(actors_path)
             .await
             .map_err(|err| err.to_string())?;
 
@@ -293,5 +293,28 @@ impl Storage for FileStorage {
         }
 
         Ok(groups)
+    }
+
+    async fn persist_changes(&self, updates: &[BackendUpdate]) -> Result<(), String> {
+        for update in updates {
+            match update {
+                BackendUpdate::PutActor(actor) => self.save_actor(actor).await?,
+                BackendUpdate::PutGroup(group) => self.save_group(group).await?,
+                BackendUpdate::PutPolicyRule(policy) => self.save_policy(policy).await?,
+                BackendUpdate::PutRole(role) => self.save_role(role).await?,
+                BackendUpdate::PutTarget(tgt) => self.save_target(tgt).await?,
+                BackendUpdate::DeleteActor(typestr, name) => {
+                    self.remove_actor(typestr, name).await?
+                }
+                BackendUpdate::DeleteGroup(name) => self.remove_group(name).await?,
+                BackendUpdate::DeletePolicyRule(name) => self.remove_policy(name).await?,
+                BackendUpdate::DeleteRole(name) => self.remove_role(name).await?,
+                BackendUpdate::DeleteTarget(typestr, name) => {
+                    self.remove_target(typestr, name).await?
+                }
+            }
+        }
+
+        Ok(())
     }
 }
