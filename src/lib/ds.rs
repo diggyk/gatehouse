@@ -877,6 +877,10 @@ impl Datastore {
 
         let mut updated_group = self.groups.read().await.get(&name).unwrap().clone();
 
+        if let Some(desc) = req.desc {
+            updated_group.desc = Some(desc);
+        }
+
         // add new members
         for member in req.add_members {
             updated_group.members.insert(member.into());
@@ -987,6 +991,8 @@ impl Datastore {
             cloned_role.groups.remove(&name.clone());
             txn.push(BackendUpdate::PutRole(cloned_role));
         }
+
+        txn.push(BackendUpdate::DeleteGroup(name.clone()));
 
         // persist and run updates locally
         match self.storage.persist_changes(&txn).await {

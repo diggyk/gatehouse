@@ -480,6 +480,8 @@ async fn test_groups() {
     assert_eq!(role2[0].name, "user");
     assert_eq!(role2[0].granted_to.len(), 2);
 
+    let grps = get_groups(&mut client, None, None, None).await.unwrap();
+    assert_eq!(grps.len(), 2);
     let grp1 = remove_group(&mut client, "administrators").await.unwrap();
     assert_eq!(grp1.name, "administrators");
     let role1 = get_roles(&mut client, Some("admin")).await.unwrap();
@@ -488,6 +490,8 @@ async fn test_groups() {
     let role2 = get_roles(&mut client, Some("user")).await.unwrap();
     assert_eq!(role2[0].name, "user");
     assert_eq!(role2[0].granted_to.len(), 1);
+    let grps = get_groups(&mut client, None, None, None).await.unwrap();
+    assert_eq!(grps.len(), 1);
 
     // we will next remove a role and make sure it gets removed from the group
     let grp2 = get_groups(&mut client, Some("customers"), None, None)
