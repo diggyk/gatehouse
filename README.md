@@ -1,6 +1,8 @@
 # Gatehouse
 Gatehouse is a combination of role-based access control, attribute-based access control, and feature flagging.
 
+**Looking for a UI?  Check out https://github.com/diggyk/gatehouse-ui**
+
 # How it works
 
 A Policy Enforcement Point (PEP) is responsible for authenticating the user and then asking Gatehouse if the user can perform a certain action. Gatehouse will trust the PEP to accurately express the user actor and environment properties.
