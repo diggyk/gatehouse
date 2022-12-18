@@ -518,8 +518,10 @@ impl Datastore {
             }
         }
 
+        let expanded_actor = self.expand_groups_and_roles(updated_actor.clone()).await;
+
         // TODO! -- do something with error
-        let _ = tx.send(DsResponse::SingleActor(updated_actor.clone().into()));
+        let _ = tx.send(DsResponse::SingleActor(expanded_actor.clone().into()));
     }
 
     /// Remove an existing actor

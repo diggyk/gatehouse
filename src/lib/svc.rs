@@ -85,6 +85,9 @@ impl Gatehouse for GatehouseSvc {
         let (tx, rx) = channel::<DsResponse>();
 
         println!("svc: Add {}/{}", req.typestr, req.name);
+        if req.typestr.is_empty() || req.name.is_empty() {
+            return Err(Status::invalid_argument("Name and typestr cannot be null"));
+        }
 
         match self
             .call_datastore(DsRequest::AddTarget(req.clone(), tx), "add target", rx)
